@@ -1,0 +1,40 @@
+# Visual Studio Code
+.vscode/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+
+# Node / React
+node_modules/
+dist/
+
+# React environment variables
+.env
+.env.local
+.env.*.local
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# Android
+.gradle/
+local.properties
+
+# iOS
+Pods/
+
+# Environment / secrets
+*.env
+secrets/
+
+# Visual Studio
+.vs/
+bin/
+obj/
