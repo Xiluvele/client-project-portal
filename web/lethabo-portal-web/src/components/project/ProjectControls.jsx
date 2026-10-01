@@ -9,22 +9,42 @@ import { Modal } from '../ui/Modal'
 import { StatusBadge } from '../ui/StatusBadge'
 
 export function MilestonePanel({ project }) {
-  const { addMilestone, completeMilestone } = useAppState()
+  const { addMilestone, updateMilestone, completeMilestone } = useAppState()
+  const [editingId, setEditingId] = useState(null)
   const [name, setName] = useState('')
   const [targetLabel, setTargetLabel] = useState('')
-  const [error, setError] = useState('')
+  const [errors, setErrors] = useState({})
+  const [message, setMessage] = useState('')
   const milestones = project.milestones ?? []
+
+  const reset = () => {
+    setEditingId(null)
+    setName('')
+    setTargetLabel('')
+    setErrors({})
+  }
 
   const submit = (event) => {
     event.preventDefault()
-    const result = addMilestone(project.id, { name, targetLabel })
+    const wasEditing = Boolean(editingId)
+    const result = wasEditing
+      ? updateMilestone(project.id, editingId, { name, targetLabel })
+      : addMilestone(project.id, { name, targetLabel })
     if (!result.ok) {
-      setError(result.message)
+      setErrors(result.errors ?? {})
+      setMessage(result.message || '')
       return
     }
-    setName('')
-    setTargetLabel('')
-    setError('')
+    reset()
+    setMessage(wasEditing ? 'Milestone updated on this project.' : 'Milestone saved on this project.')
+  }
+
+  const startEdit = (milestone) => {
+    setEditingId(milestone.id)
+    setName(milestone.name)
+    setTargetLabel(milestone.targetLabel || '')
+    setErrors({})
+    setMessage('')
   }
 
   return (
@@ -38,16 +58,20 @@ export function MilestonePanel({ project }) {
             <small>{milestone.targetLabel || 'No target date'}</small>
           </div>
           <StatusBadge status={milestone.status === 'complete' ? 'confirmed' : 'recorded'} label={milestone.status === 'complete' ? 'Complete' : 'Planned'} />
+          <Button size="small" variant="secondary" onClick={() => startEdit(milestone)}>Edit</Button>
           {milestone.status !== 'complete' ? (
             <Button size="small" onClick={() => completeMilestone(project.id, milestone.id)}>Mark complete</Button>
           ) : null}
         </div>
       ))}
-      <form className="stack" onSubmit={submit}>
-        {error ? <p className="field__error">{error}</p> : null}
-        <TextField label="Milestone name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Design" />
-        <TextField label="Target date" value={targetLabel} onChange={(event) => setTargetLabel(event.target.value)} placeholder="12 Sep" />
-        <Button type="submit">Add milestone</Button>
+      <form className="stack" onSubmit={submit} noValidate>
+        {message ? <p className={errors.name || errors.targetLabel ? 'field__error' : 'notice'}>{message}</p> : null}
+        <TextField label="Milestone name" value={name} error={errors.name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })) }} placeholder="Design" />
+        <TextField label="Target date" value={targetLabel} error={errors.targetLabel} onChange={(event) => { setTargetLabel(event.target.value); setErrors((current) => ({ ...current, targetLabel: undefined })) }} placeholder="12 Sep" />
+        <div className="task__actions">
+          <Button type="submit">{editingId ? 'Save milestone' : 'Add milestone'}</Button>
+          {editingId ? <Button type="button" variant="secondary" onClick={reset}>Cancel edit</Button> : null}
+        </div>
       </form>
     </Card>
   )

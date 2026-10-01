@@ -13,7 +13,7 @@ import { useProjectFilters } from '../../state/useProjectFilters'
 import { useAppState } from '../../state/useAppState'
 
 export function ManagerDashboardPage() {
-  const { user, projects, invoices, activities, clients, members, changeRequests } = useAppState()
+  const { user, projects, invoices, activities, clients, members, changeRequests, deleteProject } = useAppState()
   const metrics = managerMetrics(projects, invoices, members)
   const { query, setQuery, filtered } = useProjectFilters(projects, clients)
   const [creating, setCreating] = useState(false)
@@ -54,7 +54,7 @@ export function ManagerDashboardPage() {
             <h2>Active Projects</h2>
             <span>{projects.length} total</span>
           </div>
-          <ProjectTable projects={visible} clients={clients} members={members} to={(id) => `/team/projects/${id}`} />
+          <ProjectTable projects={visible} clients={clients} members={members} to={(id) => `/team/projects/${id}`} onDelete={deleteProject} />
         </Card>
         <Card>
           <div className="section-head">

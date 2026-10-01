@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import { LANE_MOVE, TASK_LANES, projectProgress } from '../../domain/catalog'
 import { formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
 import { Avatar, AvatarStack } from '../ui/Avatar'
 import { Button } from '../ui/Button'
 import { ProgressBar } from '../ui/Card'
+import { Modal } from '../ui/Modal'
 import { StatusBadge } from '../ui/StatusBadge'
 
 export function TaskBoard({ project }) {
@@ -105,7 +107,8 @@ export function CommentThread({ project }) {
   )
 }
 
-export function ProjectTable({ projects, clients, members, to }) {
+export function ProjectTable({ projects, clients, members, to, onDelete }) {
+  const [pending, setPending] = useState(null)
   return (
     <div className="table-wrap">
       <table className="data">
@@ -116,30 +119,42 @@ export function ProjectTable({ projects, clients, members, to }) {
             <th>Status</th>
             <th>Team</th>
             <th>Due</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           {projects.map((project) => {
             const client = clients.find((item) => item.id === project.clientId)
-            const people = members.filter((member) => project.memberIds.includes(member.id))
+            const people = members.filter((member) => (project.memberIds ?? []).includes(member.id))
             return (
               <tr key={project.id}>
                 <td>
-                  <Link className="row-link" to={to(project.id)}>
-                    <div className="cell-title">{client?.name}</div>
-                    <div className="cell-sub">{project.name}</div>
-                  </Link>
+                  <div className="cell-title">{client?.name}</div>
+                  <div className="cell-sub">{project.name}</div>
                 </td>
                 <td className="progress-cell"><ProgressBar value={projectProgress(project)} thin /></td>
                 <td><StatusBadge status={project.status} /></td>
                 <td><AvatarStack people={people} /></td>
                 <td>{project.dueLabel}</td>
+                <td>
+                  <div className="task__actions">
+                    <Link className="btn btn--secondary btn--small" to={to(project.id)}>View</Link>
+                    {onDelete ? <Button size="small" variant="ghost" onClick={() => setPending(project)}>Delete</Button> : null}
+                  </div>
+                </td>
               </tr>
             )
           })}
         </tbody>
       </table>
       {projects.length === 0 ? <p className="empty">No projects match this view.</p> : null}
+      <Modal title="Delete project" open={Boolean(pending)} onClose={() => setPending(null)}>
+        <p>Delete <strong>{pending?.name}</strong>? The client will no longer see this project, its files, or its invoices.</p>
+        <div className="task__actions">
+          <Button variant="secondary" onClick={() => setPending(null)}>Keep project</Button>
+          <Button onClick={() => { onDelete?.(pending.id); setPending(null) }}>Delete project</Button>
+        </div>
+      </Modal>
     </div>
   )
 }

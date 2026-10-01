@@ -5,10 +5,25 @@ import { SelectField, TextField } from '../ui/Fields'
 import { Modal } from '../ui/Modal'
 import { useAppState } from '../../state/useAppState'
 
+const EMPTY = { clientId: '', name: '', description: '', dueLabel: '', service: '' }
+
 export function CreateProjectModal({ open, onClose }) {
   const { clients, members, createProject } = useAppState()
   const navigate = useNavigate()
   const [memberIds, setMemberIds] = useState(['nk'])
+  const [form, setForm] = useState(EMPTY)
+  const [errors, setErrors] = useState({})
+
+  const setField = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }))
+    setErrors((current) => ({ ...current, [field]: undefined }))
+  }
+
+  const close = () => {
+    setForm(EMPTY)
+    setErrors({})
+    onClose()
+  }
 
   const toggleMember = (id) => {
     setMemberIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
@@ -16,27 +31,27 @@ export function CreateProjectModal({ open, onClose }) {
 
   const submit = (event) => {
     event.preventDefault()
-    const data = new FormData(event.currentTarget)
-    const project = createProject({
-      clientId: data.get('clientId'),
-      name: data.get('name'),
-      service: data.get('service'),
-      dueLabel: data.get('dueLabel'),
-      memberIds,
-    })
-    onClose()
-    navigate(`/team/projects/${project.id}`)
+    const result = createProject({ ...form, memberIds })
+    if (!result.ok) {
+      setErrors(result.errors ?? {})
+      return
+    }
+    close()
+    navigate(`/team/projects/${result.project.id}`)
   }
 
   return (
-    <Modal title="New project" open={open} onClose={onClose}>
-      <form className="stack" onSubmit={submit}>
-        <SelectField label="Client" name="clientId" required defaultValue={clients[0]?.id}>
+    <Modal title="New project" open={open} onClose={close}>
+      <form className="stack" onSubmit={submit} noValidate>
+        {errors.form ? <div className="form-error">{errors.form}</div> : null}
+        <SelectField label="Client" name="clientId" value={form.clientId} error={errors.clientId} onChange={(event) => setField('clientId', event.target.value)}>
+          <option value="">Select a client</option>
           {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
         </SelectField>
-        <TextField label="Project name" name="name" required placeholder="Website Rebuild" />
-        <TextField label="Service" name="service" placeholder="Web development" />
-        <TextField label="Due" name="dueLabel" placeholder="12 Oct" />
+        <TextField label="Project title" name="name" value={form.name} error={errors.name} onChange={(event) => setField('name', event.target.value)} placeholder="Website Rebuild" />
+        <TextField label="Description" name="description" value={form.description} error={errors.description} onChange={(event) => setField('description', event.target.value)} placeholder="What this engagement covers" />
+        <TextField label="Service" name="service" value={form.service} onChange={(event) => setField('service', event.target.value)} placeholder="Web development" />
+        <TextField label="Due date" name="dueLabel" value={form.dueLabel} error={errors.dueLabel} onChange={(event) => setField('dueLabel', event.target.value)} placeholder="12 Oct" />
         <div className="field">
           <span className="field__label">Team</span>
           <div className="check-grid">

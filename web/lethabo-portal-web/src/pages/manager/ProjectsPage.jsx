@@ -10,7 +10,7 @@ import { useProjectFilters } from '../../state/useProjectFilters'
 import { cx } from '../../lib/format'
 
 export function ProjectsPage() {
-  const { projects, clients, members } = useAppState()
+  const { projects, clients, members, deleteProject } = useAppState()
   const { status, setStatus, filtered, statuses } = useProjectFilters(projects, clients)
   const [creating, setCreating] = useState(false)
 
@@ -30,7 +30,7 @@ export function ProjectsPage() {
         ))}
       </div>
       <Card>
-        <ProjectTable projects={filtered} clients={clients} members={members} to={(id) => `/team/projects/${id}`} />
+        <ProjectTable projects={filtered} clients={clients} members={members} to={(id) => `/team/projects/${id}`} onDelete={deleteProject} />
       </Card>
       <CreateProjectModal open={creating} onClose={() => setCreating(false)} />
     </>

@@ -129,20 +129,26 @@ export function AppStateProvider({ children }) {
   const managerIds = () => users.filter((item) => item.role === 'manager' && item.active !== false).map((item) => item.id)
 
   const createProject = ({ clientId, name, service, dueLabel, memberIds, description }) => {
-    if (!clientId || !name?.trim()) return null
+    const errors = {}
+    if (!clientId) errors.clientId = 'Select a client. The project cannot be saved without one.'
+    if (!name?.trim()) errors.name = 'Enter a project title.'
+    if (!description?.trim()) errors.description = 'Enter a description.'
+    if (!dueLabel?.trim()) errors.dueLabel = 'Enter a due date.'
+    if (Object.keys(errors).length) return { ok: false, errors }
+
     const project = {
       id: createId('project'),
       clientId,
       name: name.trim(),
-      service: service.trim() || name.trim(),
+      service: (service || name).trim(),
       status: 'in_progress',
       stage: 'discovery',
       startedLabel: new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }),
-      dueLabel: (dueLabel || '').trim() || 'Not set',
+      dueLabel: dueLabel.trim(),
       dueThisWeek: false,
       progress: 8,
       memberIds,
-      description: (description || '').trim(),
+      description: description.trim(),
       milestones: [],
       tasks: [],
       files: [],
@@ -151,7 +157,20 @@ export function AppStateProvider({ children }) {
     setProjects((current) => [project, ...current])
     const client = clients.find((item) => item.id === clientId)
     addActivity(project.id, `${client?.name ?? 'A client'} was added to ${project.name}`)
-    return project
+    notify(clientUserIds(clientId), `${project.name} is now visible on your account.`, project.id)
+    return { ok: true, project }
+  }
+
+  const deleteProject = (projectId) => {
+    const project = projects.find((item) => item.id === projectId)
+    if (!project) return { ok: false, message: 'That project could not be found.' }
+    setProjects((current) => current.filter((item) => item.id !== projectId))
+    setInvoices((current) => current.filter((item) => item.projectId !== projectId))
+    setChangeRequests((current) => current.filter((item) => item.projectId !== projectId))
+    setRequirements((current) => current.filter((item) => item.projectId !== projectId))
+    setActivities((current) => current.filter((item) => item.projectId !== projectId))
+    setNotifications((current) => current.filter((item) => item.projectId !== projectId))
+    return { ok: true }
   }
 
   const updateProject = (projectId, patch) => {
@@ -314,12 +333,35 @@ export function AppStateProvider({ children }) {
   }
 
   const addMilestone = (projectId, { name, targetLabel }) => {
-    if (!name?.trim()) return { ok: false, message: 'Enter a milestone name.' }
-    const milestone = { id: createId('mile'), name: name.trim(), targetLabel: (targetLabel || '').trim(), status: 'planned' }
-    setProjects((current) => current.map((project) => (
-      project.id === projectId ? { ...project, milestones: [...(project.milestones ?? []), milestone] } : project
+    const errors = {}
+    if (!name?.trim()) errors.name = 'Enter a milestone name.'
+    if (!targetLabel?.trim()) errors.targetLabel = 'Enter a target date.'
+    if (Object.keys(errors).length) return { ok: false, errors }
+    const project = projects.find((item) => item.id === projectId)
+    if (!project) return { ok: false, message: 'Open a project before adding a milestone.' }
+    const milestone = { id: createId('mile'), name: name.trim(), targetLabel: targetLabel.trim(), status: 'planned' }
+    setProjects((current) => current.map((item) => (
+      item.id === projectId ? { ...item, milestones: [...(item.milestones ?? []), milestone] } : item
     )))
     addActivity(projectId, `Milestone added: ${milestone.name}`)
+    notify(clientUserIds(project.clientId), `${milestone.name} was added to the ${project.name} timeline.`, projectId)
+    return { ok: true }
+  }
+
+  const updateMilestone = (projectId, milestoneId, { name, targetLabel }) => {
+    const errors = {}
+    if (!name?.trim()) errors.name = 'Enter a milestone name.'
+    if (!targetLabel?.trim()) errors.targetLabel = 'Enter a target date.'
+    if (Object.keys(errors).length) return { ok: false, errors }
+    const project = projects.find((item) => item.id === projectId)
+    const existing = project?.milestones?.find((item) => item.id === milestoneId)
+    if (!existing) return { ok: false, message: 'That milestone is no longer on this project.' }
+    setProjects((current) => current.map((item) => (
+      item.id === projectId
+        ? { ...item, milestones: item.milestones.map((milestone) => (milestone.id === milestoneId ? { ...milestone, name: name.trim(), targetLabel: targetLabel.trim() } : milestone)) }
+        : item
+    )))
+    addActivity(projectId, `Milestone updated: ${name.trim()}`)
     return { ok: true }
   }
 
@@ -444,6 +486,7 @@ export function AppStateProvider({ children }) {
     logout,
     register,
     createProject,
+    deleteProject,
     updateProject,
     moveTask,
     addTask,
@@ -456,6 +499,7 @@ export function AppStateProvider({ children }) {
     cancelInvoice,
     remindInvoice,
     addMilestone,
+    updateMilestone,
     completeMilestone,
     addRequirement,
     setRequirementStatus,
