@@ -22,13 +22,15 @@ export const clients = [
 ]
 
 export const users = [
-  { id: 'user-nk', name: 'Naledi Khumalo', email: 'naledi@lethabom.co.za', password: 'connect123', role: 'manager', memberId: 'nk', title: 'Project Manager' },
-  { id: 'user-thandi', name: 'Thandi Kunene', email: 'thandi@kunene.co.za', password: 'connect123', role: 'client', clientId: 'kunene', title: 'Kunene Attorneys' },
-  { id: 'user-lindiwe', name: 'Lindiwe Ndlovu', email: 'lindiwe@vukaretail.co.za', password: 'connect123', role: 'client', clientId: 'vuka', title: 'Vuka Retail' },
+  { id: 'user-admin', name: 'Boitumelo Sithole', email: 'admin@lethabom.co.za', password: 'connect123', role: 'administrator', title: 'Administrator', active: true },
+  { id: 'user-nk', name: 'Naledi Khumalo', email: 'naledi@lethabom.co.za', password: 'connect123', role: 'manager', memberId: 'nk', title: 'Project Manager', active: true },
+  { id: 'user-sipho', name: 'Sipho Dlamini', email: 'sipho@lethabom.co.za', password: 'connect123', role: 'developer', memberId: 'sd', title: 'Software Developer', active: true },
+  { id: 'user-thandi', name: 'Thandi Kunene', email: 'thandi@kunene.co.za', password: 'connect123', role: 'client', clientId: 'kunene', title: 'Kunene Attorneys', active: true },
+  { id: 'user-lindiwe', name: 'Lindiwe Ndlovu', email: 'lindiwe@vukaretail.co.za', password: 'connect123', role: 'client', clientId: 'vuka', title: 'Vuka Retail', active: true },
 ]
 
 const kuneneTasks = [
-  { id: 't1', title: 'Collect final copy for Practice Areas page', type: 'content', status: 'backlog', assigneeId: 'km', dueLabel: 'No date' },
+  { id: 't1', title: 'Collect final copy for Practice Areas page', type: 'content', status: 'backlog', assigneeId: null, dueLabel: 'No date', description: 'Waiting for a developer to be assigned.' },
   { id: 't2', title: 'Set up contact form email routing', type: 'dev', status: 'backlog', assigneeId: 'sd', dueLabel: 'No date' },
   { id: 't3', title: 'Build responsive nav + footer components', type: 'dev', status: 'in_progress', assigneeId: 'sd', dueLabel: '22 Aug' },
   { id: 't4', title: 'Design attorney profile page template', type: 'design', status: 'in_progress', assigneeId: 'tm', dueLabel: '22 Aug' },
@@ -51,6 +53,13 @@ export const projects = [
     dueLabel: '12 Sep',
     dueThisWeek: true,
     memberIds: ['nk', 'tm', 'sd'],
+    milestones: [
+      { id: 'm1', name: 'Discovery', targetLabel: '21 Jul', status: 'complete' },
+      { id: 'm2', name: 'Design', targetLabel: '12 Aug', status: 'complete' },
+      { id: 'm3', name: 'Development', targetLabel: '12 Sep', status: 'planned' },
+      { id: 'm4', name: 'Testing', targetLabel: '20 Sep', status: 'planned' },
+      { id: 'm5', name: 'Launch', targetLabel: '30 Sep', status: 'planned' },
+    ],
     tasks: kuneneTasks,
     files: [
       { id: 'f1', name: 'Homepage_v3.fig', kind: 'Fig', uploadedBy: 'Thabo', createdAt: daysAgo(2), approval: 'pending' },
@@ -111,8 +120,10 @@ export const projects = [
     dueLabel: '18 Sep',
     dueThisWeek: false,
     progress: 34,
-    memberIds: ['lp', 'nk'],
-    tasks: [],
+    memberIds: ['lp', 'nk', 'sd'],
+    tasks: [
+      { id: 'tb1', title: 'Booking calendar API', type: 'dev', status: 'in_progress', assigneeId: 'sd', dueLabel: '01 Sep', overdue: true, description: 'Past the agreed hand-off date.' },
+    ],
     files: [],
     comments: [
       { id: 'c6', authorName: 'Botlumelo Clinic', initials: 'BC', role: 'client', body: 'Flagged a delay concern on the booking calendar.', createdAt: daysAgo(1), read: false },
@@ -251,6 +262,28 @@ export const activities = [
   { id: 'a4', projectId: 'botlumelo-app', text: 'Botlumelo Clinic flagged a delay concern', createdAt: daysAgo(1) },
 ]
 
+export const changeRequests = [
+  {
+    id: 'cr1',
+    projectId: 'kunene-web',
+    clientId: 'kunene',
+    description: 'Add a second-language toggle on the homepage. This was not in the agreed page list.',
+    status: 'submitted',
+    createdAt: hoursAgo(4),
+  },
+]
+
+export const requirements = [
+  { id: 'rq1', projectId: 'kunene-web', text: 'Practice areas page with an attorney profile for each partner.', status: 'confirmed' },
+  { id: 'rq2', projectId: 'kunene-web', text: 'Contact form delivered to reception@kunene.co.za.', status: 'recorded' },
+]
+
+export const notifications = [
+  { id: 'n1', userId: 'user-nk', projectId: 'kunene-web', text: 'Kunene Attorneys submitted a change request on Website Rebuild.', read: false, createdAt: hoursAgo(4) },
+  { id: 'n2', userId: 'user-sipho', projectId: 'kunene-web', text: 'You were assigned “Build responsive nav + footer components”.', read: false, createdAt: hoursAgo(6) },
+  { id: 'n3', userId: 'user-thandi', projectId: 'kunene-web', text: 'A new design was uploaded to Website Rebuild.', read: false, createdAt: hoursAgo(3) },
+]
+
 export function cloneSeed() {
   return {
     users: structuredClone(users),
@@ -258,5 +291,8 @@ export function cloneSeed() {
     projects: structuredClone(projects),
     invoices: structuredClone(invoices),
     activities: structuredClone(activities),
+    changeRequests: structuredClone(changeRequests),
+    requirements: structuredClone(requirements),
+    notifications: structuredClone(notifications),
   }
 }

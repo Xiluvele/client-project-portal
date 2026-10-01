@@ -65,7 +65,7 @@ export function FileList({ project, canApprove = false }) {
       <span className="file-mark">{file.kind}</span>
       <div className="file-copy">
         <strong>{file.name}</strong>
-        <small>Uploaded by {file.uploadedBy} · {formatRelative(file.createdAt)}</small>
+        <small>Uploaded by {file.uploadedBy} · v{file.version || 1} · {formatRelative(file.createdAt)}{file.description ? ` · ${file.description}` : ''}</small>
       </div>
       <StatusBadge status={file.approval} group="approval" />
       {canApprove && file.approval === 'pending' ? (

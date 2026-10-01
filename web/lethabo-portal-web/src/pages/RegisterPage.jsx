@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/ui/Logo'
 import { Button } from '../components/ui/Button'
 import { TextField } from '../components/ui/Fields'
+import { homeFor } from '../lib/roles'
 import { useAppState } from '../state/useAppState'
 
 export function RegisterPage() {
@@ -36,7 +37,7 @@ export function RegisterPage() {
       setError(result.message)
       return
     }
-    navigate(result.user.role === 'client' ? '/client/dashboard' : '/team/dashboard')
+    navigate(homeFor(result.user.role))
   }
 
   return (

@@ -1,5 +1,14 @@
 import { projectProgress } from '../domain/catalog'
 
+export function projectHealth(project, changeRequests = []) {
+  const openChange = changeRequests.some(
+    (request) => request.projectId === project.id && ['submitted', 'under_review', 'clarification'].includes(request.status),
+  )
+  const overdueTask = (project.tasks ?? []).some((task) => task.overdue && task.status !== 'done')
+  if (project.status === 'at_risk' || openChange || overdueTask) return 'at_risk'
+  return 'on_track'
+}
+
 export function invoiceTotal(invoice) {
   return invoice.items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
 }

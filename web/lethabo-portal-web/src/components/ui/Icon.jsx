@@ -21,6 +21,8 @@ export function Icon({ name, className = 'icon' }) {
       return <svg {...common}><path d="M6 6l12 12M18 6 6 18" /></svg>
     case 'logout':
       return <svg {...common}><path d="M10 7V5H5v14h5v-2" /><path d="M10 12h9M16 8l4 4-4 4" /></svg>
+    case 'bell':
+      return <svg {...common}><path d="M6 16h12l-1-2v-4a5 5 0 0 0-10 0v4z" /><path d="M10 18a2 2 0 0 0 4 0" /></svg>
     case 'menu':
       return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     default:

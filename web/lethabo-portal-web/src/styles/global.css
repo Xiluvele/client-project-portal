@@ -110,7 +110,11 @@ img { max-width: 100%; }
 .badge--in_progress, .badge--pending { background: var(--yellow-soft); color: #7a6200; }
 .badge--in_review, .badge--paid, .badge--approved { background: var(--green-soft); color: var(--green); }
 .badge--at_risk, .badge--overdue { background: var(--red-soft); color: var(--red); }
-.badge--done { background: var(--green-soft); color: var(--green); }
+.badge--submitted, .badge--recorded, .badge--clarification { background: var(--yellow-soft); color: #7a6200; }
+.badge--under_review { background: var(--blue-soft); color: var(--blue); }
+.badge--approved, .badge--confirmed, .badge--on_track { background: var(--green-soft); color: var(--green); }
+.badge--rejected, .badge--disputed { background: var(--red-soft); color: var(--red); }
+.badge--cancelled { background: #f2f3f5; color: var(--muted-strong); }
 .badge--content { background: #efeff1; color: #4d525a; }
 .badge--dev { background: var(--blue-soft); color: var(--blue); }
 .badge--design { background: var(--pink-soft); color: var(--pink); }
@@ -313,7 +317,7 @@ table.data tr:first-child td { border-top: 0; }
 .project-list { display: flex; flex-direction: column; gap: 12px; }
 .project-card__top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .project-card h2 { margin: 0; font-size: 18px; letter-spacing: -0.03em; }
-.milestones { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.milestones { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; margin-top: 14px; }
 .milestone { text-align: center; }
 .milestone__track { height: 6px; border-radius: 99px; background: #eceef2; margin-bottom: 6px; }
 .milestone.is-done .milestone__track, .milestone.is-current .milestone__track { background: var(--yellow); }

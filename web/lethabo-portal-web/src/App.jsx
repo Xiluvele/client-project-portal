@@ -13,21 +13,25 @@ import { ClientDashboardPage } from './pages/client/ClientDashboardPage'
 import { ClientProjectsPage } from './pages/client/ClientProjectsPage'
 import { ClientProjectPage } from './pages/client/ClientProjectPage'
 import { ClientInvoicesPage } from './pages/client/ClientInvoicesPage'
+import { homeFor } from './lib/roles'
 import { useAppState } from './state/useAppState'
+import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { UsersPage } from './pages/admin/UsersPage'
+import { DeveloperTasksPage } from './pages/developer/DeveloperTasksPage'
+import { DeveloperProjectPage } from './pages/developer/DeveloperProjectPage'
+import { NotificationsPage } from './pages/shared/NotificationsPage'
 
 function RequireAuth({ role, children }) {
   const { user } = useAppState()
   if (!user) return <Navigate to="/login" replace />
-  if (user.role !== role) {
-    return <Navigate to={user.role === 'client' ? '/client/dashboard' : '/team/dashboard'} replace />
-  }
+  if (user.role !== role) return <Navigate to={homeFor(user.role)} replace />
   return children
 }
 
 function HomeRedirect() {
   const { user } = useAppState()
   if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'client' ? '/client/dashboard' : '/team/dashboard'} replace />
+  return <Navigate to={homeFor(user.role)} replace />
 }
 
 export default function App() {
@@ -43,6 +47,7 @@ export default function App() {
         <Route path="projects/:projectId" element={<ProjectWorkspacePage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="members" element={<TeamPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
@@ -52,6 +57,18 @@ export default function App() {
         <Route path="projects" element={<ClientProjectsPage />} />
         <Route path="projects/:projectId" element={<ClientProjectPage />} />
         <Route path="invoices" element={<ClientInvoicesPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+      </Route>
+      <Route path="/developer" element={<RequireAuth role="developer"><AppShell audience="developer" /></RequireAuth>}>
+        <Route index element={<Navigate to="tasks" replace />} />
+        <Route path="tasks" element={<DeveloperTasksPage />} />
+        <Route path="projects/:projectId" element={<DeveloperProjectPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+      </Route>
+      <Route path="/admin" element={<RequireAuth role="administrator"><AppShell audience="administrator" /></RequireAuth>}>
+        <Route index element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard" element={<AdminDashboardPage />} />
+        <Route path="users" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -61,5 +78,5 @@ export default function App() {
 function GuestOnly({ children }) {
   const { user } = useAppState()
   if (!user) return children
-  return <Navigate to={user.role === 'client' ? '/client/dashboard' : '/team/dashboard'} replace />
+  return <Navigate to={homeFor(user.role)} replace />
 }

@@ -10,7 +10,7 @@ import { clientById, invoiceMetrics, invoiceTotal, projectById } from '../../sta
 import { useAppState } from '../../state/useAppState'
 
 export function InvoicesPage() {
-  const { invoices, clients, projects, createInvoice, remindInvoice } = useAppState()
+  const { invoices, clients, projects, createInvoice, updateInvoice, remindInvoice, cancelInvoice } = useAppState()
   const [params] = useSearchParams()
   const presetProject = params.get('project') || ''
   const preset = projects.find((project) => project.id === presetProject)
@@ -20,6 +20,7 @@ export function InvoicesPage() {
   const [dueLabel, setDueLabel] = useState('29 August 2026')
   const [items, setItems] = useState([{ id: createId('draft'), description: '', amount: '' }])
   const [notice, setNotice] = useState('')
+  const [editingId, setEditingId] = useState(null)
 
   const clientProjects = projects.filter((project) => project.clientId === clientId)
   const total = items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
@@ -33,6 +34,12 @@ export function InvoicesPage() {
     const cleaned = items.filter((item) => item.description.trim() && Number(item.amount) > 0)
     if (!clientId || !projectId || cleaned.length === 0) {
       setNotice('Choose a client, a project, and at least one line item.')
+      return
+    }
+    if (editingId) {
+      const result = updateInvoice(editingId, { dueLabel, items: cleaned.map((item) => ({ ...item, amount: Number(item.amount) })), title: cleaned[0].description })
+      setNotice(result.ok ? 'Invoice updated.' : result.message)
+      setEditingId(null)
       return
     }
     const invoice = createInvoice({ clientId, projectId, dueLabel, items: cleaned })
@@ -84,11 +91,24 @@ export function InvoicesPage() {
                         <td>{formatRand(invoiceTotal(invoice))}</td>
                         <td><StatusBadge status={invoice.status} group="invoice" /></td>
                         <td>{invoice.dueLabel}</td>
-                        <td>
-                          {invoice.status === 'paid' ? <span className="quiet">Recorded</span> : (
-                            <button className="linkish" type="button" onClick={() => remindInvoice(invoice.id)}>
-                              {invoice.reminded ? 'Reminded' : 'Remind'}
-                            </button>
+                          <td>
+                          {invoice.status === 'paid' || invoice.status === 'cancelled' ? <span className="quiet">{invoice.status === 'paid' ? 'Recorded' : 'Cancelled'}</span> : (
+                            <>
+                              <button className="linkish" type="button" onClick={() => remindInvoice(invoice.id)}>
+                                {invoice.reminded ? 'Reminded' : 'Remind'}
+                              </button>
+                              {' · '}
+                              <button className="linkish" type="button" onClick={() => {
+                                setEditingId(invoice.id)
+                                setClientId(invoice.clientId)
+                                setProjectId(invoice.projectId)
+                                setDueLabel(invoice.dueLabel)
+                                setItems(invoice.items.map((item) => ({ ...item, amount: String(item.amount) })))
+                                setNotice(`Editing ${invoice.number}. Paid invoices stay locked.`)
+                              }}>Edit</button>
+                              {' · '}
+                              <button className="linkish" type="button" onClick={() => cancelInvoice(invoice.id)}>Cancel</button>
+                            </>
                           )}
                         </td>
                       </tr>
@@ -100,7 +120,7 @@ export function InvoicesPage() {
           </Card>
         </div>
         <Card className="side-panel">
-          <h2>Create Invoice</h2>
+          <h2>{editingId ? 'Edit invoice' : 'Create Invoice'}</h2>
           <span className="quiet">This will appear on the client's project view.</span>
           <form className="stack" onSubmit={submit}>
             <SelectField label="Client" value={clientId} onChange={(event) => { setClientId(event.target.value); setProjectId('') }}>
@@ -123,7 +143,7 @@ export function InvoicesPage() {
               <button className="linkish" type="button" onClick={() => setItems((current) => [...current, { id: createId('draft'), description: '', amount: '' }])}>Add line</button>
             </div>
             <div className="total-row"><span>Total</span><span>{formatRand(total)}</span></div>
-            <Button type="submit" block>Send Invoice to Client</Button>
+            <Button type="submit" block>{editingId ? 'Save invoice' : 'Send Invoice to Client'}</Button>
           </form>
         </Card>
       </div>

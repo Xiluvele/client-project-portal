@@ -1,5 +1,10 @@
 export function Logo({ audience = 'team', tone = 'on-dark' }) {
-  const sub = audience === 'client' ? 'CONNECT — CLIENT' : 'CONNECT — TEAM'
+  const labels = {
+    client: 'CONNECT — CLIENT',
+    developer: 'CONNECT — DEV',
+    administrator: 'CONNECT — ADMIN',
+  }
+  const sub = labels[audience] ?? 'CONNECT — TEAM'
   return (
     <div className={tone === 'on-light' ? 'logo logo--on-light' : 'logo'}>
       <span className="logo__mark">LM</span>

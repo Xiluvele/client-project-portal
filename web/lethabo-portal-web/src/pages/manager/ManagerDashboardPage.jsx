@@ -8,16 +8,18 @@ import { CreateProjectModal } from '../../components/project/CreateProjectModal'
 import { ProjectTable } from '../../components/project/ProjectWidgets'
 import { Avatar } from '../../components/ui/Avatar'
 import { firstName, formatRand, formatRelative, greetingFor } from '../../lib/format'
-import { managerMetrics } from '../../state/metrics'
+import { managerMetrics, projectHealth } from '../../state/metrics'
 import { useProjectFilters } from '../../state/useProjectFilters'
 import { useAppState } from '../../state/useAppState'
 
 export function ManagerDashboardPage() {
-  const { user, projects, invoices, activities, clients, members } = useAppState()
+  const { user, projects, invoices, activities, clients, members, changeRequests } = useAppState()
   const metrics = managerMetrics(projects, invoices, members)
   const { query, setQuery, filtered } = useProjectFilters(projects, clients)
   const [creating, setCreating] = useState(false)
   const visible = filtered.slice(0, 4)
+  const unassigned = projects.flatMap((project) => project.tasks.filter((task) => !task.assigneeId).map((task) => ({ ...task, projectName: project.name })))
+  const atRisk = projects.filter((project) => projectHealth(project, changeRequests) === 'at_risk').length
 
   return (
     <>
@@ -36,8 +38,16 @@ export function ManagerDashboardPage() {
         <StatCard dark label="ACTIVE PROJECTS" value={metrics.activeCount} hint={`${metrics.dueThisWeek} due this week`} hintTone="yellow" />
         <StatCard label="PENDING INVOICES" value={formatRand(metrics.pendingAmount)} hint={`${metrics.awaitingCount} awaiting payment`} />
         <StatCard label="UNREAD CLIENT COMMENTS" value={metrics.unreadCount} hint="Needs response" />
-        <StatCard label="TEAM UTILISATION" value={`${metrics.utilisation}%`} hint="On target" hintTone="green" />
+        <StatCard label="TEAM UTILISATION" value={`${metrics.utilisation}%`} hint={`${atRisk} at risk`} hintTone={atRisk ? 'danger' : 'green'} />
       </div>
+      {unassigned.length ? (
+        <Card>
+          <div className="section-head"><h2>Unassigned tasks</h2></div>
+          {unassigned.map((task) => (
+            <p key={task.id}><strong>{task.title}</strong> <span className="quiet">on {task.projectName} — no developer selected</span></p>
+          ))}
+        </Card>
+      ) : null}
       <div className="dashboard-grid">
         <Card>
           <div className="section-head">

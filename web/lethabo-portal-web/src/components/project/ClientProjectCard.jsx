@@ -20,7 +20,7 @@ export function ClientProjectCard({ project }) {
         <span>Overall progress</span>
       </div>
       <ProgressBar value={progress} />
-      <MilestoneTrack stage={project.stage} />
+      <MilestoneTrack stage={project.stage} milestones={project.milestones} />
       <Link className="btn btn--secondary" to={`/client/projects/${project.id}`}>Open project</Link>
     </Card>
   )

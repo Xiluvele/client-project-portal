@@ -1,5 +1,5 @@
 export const TASK_LANES = [
-  { id: 'backlog', label: 'Backlog' },
+  { id: 'backlog', label: 'To Do' },
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },
   { id: 'done', label: 'Done' },
@@ -16,6 +16,21 @@ export const INVOICE_STATUSES = [
   { id: 'pending', label: 'Pending' },
   { id: 'overdue', label: 'Overdue' },
   { id: 'paid', label: 'Paid' },
+  { id: 'cancelled', label: 'Cancelled' },
+]
+
+export const CHANGE_STATUSES = [
+  { id: 'submitted', label: 'Submitted' },
+  { id: 'under_review', label: 'Under review' },
+  { id: 'clarification', label: 'Clarification' },
+  { id: 'approved', label: 'Approved' },
+  { id: 'rejected', label: 'Rejected' },
+]
+
+export const REQUIREMENT_STATUSES = [
+  { id: 'recorded', label: 'Awaiting confirmation' },
+  { id: 'confirmed', label: 'Confirmed' },
+  { id: 'disputed', label: 'Disputed' },
 ]
 
 export const TASK_TYPES = [

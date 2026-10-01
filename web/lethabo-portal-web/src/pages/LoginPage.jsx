@@ -2,10 +2,13 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button } from '../components/ui/Button'
 import { SelectField, TextField } from '../components/ui/Fields'
+import { homeFor } from '../lib/roles'
 import { useAppState } from '../state/useAppState'
 
 const PROTOTYPE_ROLES = [
+  { id: 'admin', label: 'Administrator', email: 'admin@lethabom.co.za' },
   { id: 'manager', label: 'Project Manager', email: 'naledi@lethabom.co.za' },
+  { id: 'developer', label: 'Developer — Sipho Dlamini', email: 'sipho@lethabom.co.za' },
   { id: 'kunene', label: 'Client — Kunene Attorneys', email: 'thandi@kunene.co.za' },
   { id: 'vuka', label: 'Client — Vuka Retail', email: 'lindiwe@vukaretail.co.za' },
 ]
@@ -15,8 +18,8 @@ const DEMO_PASSWORD = 'connect123'
 export function LoginPage() {
   const { login } = useAppState()
   const navigate = useNavigate()
-  const [roleId, setRoleId] = useState(PROTOTYPE_ROLES[0].id)
-  const [email, setEmail] = useState(PROTOTYPE_ROLES[0].email)
+  const [roleId, setRoleId] = useState('manager')
+  const [email, setEmail] = useState('naledi@lethabom.co.za')
   const [password, setPassword] = useState(DEMO_PASSWORD)
   const [error, setError] = useState('')
 
@@ -35,7 +38,7 @@ export function LoginPage() {
       setError(result.message)
       return
     }
-    navigate(result.user.role === 'client' ? '/client/dashboard' : '/team/dashboard')
+    navigate(homeFor(result.user.role))
   }
 
   return (

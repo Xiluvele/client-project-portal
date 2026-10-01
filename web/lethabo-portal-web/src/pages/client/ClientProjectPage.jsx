@@ -5,6 +5,7 @@ import { Card, ProgressBar } from '../../components/ui/Card'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { MilestoneTrack } from '../../components/project/MilestoneTrack'
 import { CommentThread, FileList } from '../../components/project/ProjectWidgets'
+import { ActivityHistory, ChangeRequestPanel, RequirementPanel } from '../../components/project/ProjectControls'
 import { useAppState } from '../../state/useAppState'
 
 export function ClientProjectPage() {
@@ -33,8 +34,15 @@ export function ClientProjectPage() {
       />
       <Card>
         <ProgressBar value={progress} />
-        <MilestoneTrack stage={project.stage} />
+        <MilestoneTrack stage={project.stage} milestones={project.milestones} />
       </Card>
+      <div className="split">
+        <RequirementPanel project={project} canConfirm />
+        <ChangeRequestPanel project={project} canSubmit />
+      </div>
+      <div className="split">
+        <ActivityHistory projectId={project.id} />
+      </div>
       <div className="split">
         <Card>
           <div className="section-head"><h2>Designs & files</h2></div>

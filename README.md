@@ -47,7 +47,9 @@ Password for every demo account: `connect123`
 
 | Sign in as | Email | Opens |
 | --- | --- | --- |
+| Administrator | admin@lethabom.co.za | User accounts and project health |
 | Project Manager | naledi@lethabom.co.za | Team dashboard |
+| Developer | sipho@lethabom.co.za | Assigned tasks only |
 | Client — Kunene Attorneys | thandi@kunene.co.za | That client's projects only |
 | Client — Vuka Retail | lindiwe@vukaretail.co.za | That client's projects only |
 
