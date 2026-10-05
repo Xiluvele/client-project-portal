@@ -1,41 +1,47 @@
+using LethaboPortal.Api.Data;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddDbContext<PortalDbContext>(options =>
+    options.UseSqlServer(PortalConnectionString.From(builder.Configuration), sql => sql.EnableRetryOnFailure()));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+var connectionString = PortalConnectionString.From(app.Configuration);
+if (!PortalConnectionString.HasPassword(connectionString))
 {
-    app.MapOpenApi();
+    throw new InvalidOperationException(
+        "The Azure SQL password is not configured. From backend/LethaboPortal.Api run: dotnet user-secrets set \"PortalDb:Password\" \"<password>\"");
 }
+
+if (app.Environment.IsDevelopment())
+    app.MapOpenApi();
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
+app.MapGet("/api/health", async (PortalDbContext db, CancellationToken cancellationToken) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    try
+    {
+        var connected = await db.Database.CanConnectAsync(cancellationToken);
+        return connected
+            ? Results.Ok(new { status = "ok", database = "CientPortal" })
+            : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    catch (Exception exception)
+    {
+        app.Logger.LogWarning(exception, "Database health check failed.");
+        return Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
-app.MapGet("/weatherforecast", () =>
+await using (var scope = app.Services.CreateAsyncScope())
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    var db = scope.ServiceProvider.GetRequiredService<PortalDbContext>();
+    await db.Database.MigrateAsync();
+    PortalDbSeeder.Seed(db);
+}
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

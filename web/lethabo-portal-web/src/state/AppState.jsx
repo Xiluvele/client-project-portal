@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { AppStateContext } from './useAppState'
 import { teamMembers, cloneSeed } from '../data/seed'
 import { createId } from '../lib/format'
+import { assessOtp, createOtpChallenge } from '../lib/otp'
 import { roleLabel } from '../lib/roles'
 
 const SESSION_KEY = 'lethabo-connect-session'
@@ -39,6 +40,7 @@ export function AppStateProvider({ children }) {
   const [requirements, setRequirements] = useState(seed.requirements)
   const [notifications, setNotifications] = useState(seed.notifications)
   const [session, setSession] = useState(() => readSession())
+  const [otpChallenge, setOtpChallenge] = useState(null)
 
   const record = users.find((item) => item.id === session?.id) ?? null
   const user = record && record.active !== false ? record : null
@@ -72,39 +74,100 @@ export function AppStateProvider({ children }) {
       }
     }
     setUsers((current) => current.map((item) => (item.id === match.id ? { ...item, failedAttempts: 0, locked: false } : item)))
-    persist(match)
-    return { ok: true, user: publicUser(match) }
+    const challenge = createOtpChallenge({ purpose: 'login', userId: match.id, email: match.email })
+    setOtpChallenge(challenge)
+    return { ok: true, step: 'otp', email: match.email, previewCode: challenge.code }
   }
 
   const logout = () => persist(null)
 
   const register = ({ name, email, password, role, company, title }) => {
-    const normalised = email.trim().toLowerCase()
+    const normalised = String(email ?? '').trim().toLowerCase()
+    if (!name?.trim()) return { ok: false, message: 'Enter your full name.' }
+    if (!normalised.includes('@')) return { ok: false, message: 'Enter a valid email address.' }
+    if (!password || password.length < 8) return { ok: false, message: 'Use at least 8 characters for the password.' }
+    if (role === 'client' && !company?.trim()) return { ok: false, message: 'Enter the company name.' }
+    if (role !== 'client' && !title?.trim()) return { ok: false, message: 'Enter your role.' }
     if (users.some((item) => item.email.toLowerCase() === normalised)) {
       return { ok: false, message: 'An account with that email already exists.' }
     }
 
+    const challenge = createOtpChallenge({
+      purpose: 'register',
+      email: normalised,
+      draft: {
+        name: name.trim(),
+        email: normalised,
+        password,
+        role,
+        company: company?.trim() ?? '',
+        title: title?.trim() ?? '',
+      },
+    })
+    setOtpChallenge(challenge)
+    return { ok: true, step: 'otp', email: normalised, previewCode: challenge.code }
+  }
+
+  const resendOtp = () => {
+    if (!otpChallenge) return { ok: false, message: 'Start again to request a code.' }
+    const challenge = createOtpChallenge({
+      purpose: otpChallenge.purpose,
+      userId: otpChallenge.userId,
+      email: otpChallenge.email,
+      draft: otpChallenge.draft,
+    })
+    setOtpChallenge(challenge)
+    return { ok: true, previewCode: challenge.code }
+  }
+
+  const cancelOtp = () => setOtpChallenge(null)
+
+  const verifyOtp = (code) => {
+    const result = assessOtp(otpChallenge, code)
+    if (!result.ok) {
+      if (result.clear) setOtpChallenge(null)
+      else if (result.attempts) setOtpChallenge({ ...otpChallenge, attempts: result.attempts })
+      return { ok: false, message: result.message, clear: Boolean(result.clear) }
+    }
+
+    if (otpChallenge.purpose === 'login') {
+      const match = users.find((item) => item.id === otpChallenge.userId)
+      setOtpChallenge(null)
+      if (!match || match.active === false) {
+        return { ok: false, message: 'This account can no longer sign in. Contact an administrator.' }
+      }
+      persist(match)
+      return { ok: true, user: publicUser(match) }
+    }
+
+    const draft = otpChallenge.draft
+    if (users.some((item) => item.email.toLowerCase() === draft.email)) {
+      setOtpChallenge(null)
+      return { ok: false, message: 'An account with that email already exists.' }
+    }
+
     let clientId = null
-    if (role === 'client') {
+    if (draft.role === 'client') {
       clientId = createId('client')
       setClients((current) => [
         ...current,
-        { id: clientId, name: company.trim(), contact: name.trim(), email: normalised },
+        { id: clientId, name: draft.company, contact: draft.name, email: draft.email },
       ])
     }
 
     const next = {
       id: createId('user'),
-      name: name.trim(),
-      email: normalised,
-      password,
-      role,
+      name: draft.name,
+      email: draft.email,
+      password: draft.password,
+      role: draft.role,
       clientId,
       memberId: null,
-      title: role === 'client' ? company.trim() : title.trim(),
+      title: draft.role === 'client' ? draft.company : draft.title,
       active: true,
     }
     setUsers((current) => [...current, next])
+    setOtpChallenge(null)
     persist(next)
     return { ok: true, user: publicUser(next) }
   }
@@ -485,6 +548,9 @@ export function AppStateProvider({ children }) {
     login,
     logout,
     register,
+    verifyOtp,
+    resendOtp,
+    cancelOtp,
     createProject,
     deleteProject,
     updateProject,

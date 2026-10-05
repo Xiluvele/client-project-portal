@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { EmailOtpStep } from '../components/auth/EmailOtpStep'
 import { Logo } from '../components/ui/Logo'
 import { Button } from '../components/ui/Button'
 import { TextField } from '../components/ui/Fields'
@@ -7,10 +8,11 @@ import { homeFor } from '../lib/roles'
 import { useAppState } from '../state/useAppState'
 
 export function RegisterPage() {
-  const { register } = useAppState()
+  const { register, verifyOtp, resendOtp, cancelOtp } = useAppState()
   const navigate = useNavigate()
   const [role, setRole] = useState('client')
   const [error, setError] = useState('')
+  const [otp, setOtp] = useState(null)
 
   const submit = (event) => {
     event.preventDefault()
@@ -37,7 +39,35 @@ export function RegisterPage() {
       setError(result.message)
       return
     }
+    setError('')
+    setOtp({ email: result.email, previewCode: result.previewCode })
+  }
+
+  const confirmCode = (code) => {
+    const result = verifyOtp(code)
+    if (!result.ok) {
+      setError(result.message)
+      if (result.clear) setOtp(null)
+      return
+    }
     navigate(homeFor(result.user.role))
+  }
+
+  const resend = () => {
+    const result = resendOtp()
+    if (!result.ok) {
+      setError(result.message)
+      return result
+    }
+    setError('')
+    setOtp((current) => ({ ...current, previewCode: result.previewCode }))
+    return result
+  }
+
+  const back = () => {
+    cancelOtp()
+    setOtp(null)
+    setError('')
   }
 
   return (
@@ -49,6 +79,17 @@ export function RegisterPage() {
       </section>
       <section className="auth__form">
         <div className="auth-card">
+          {otp ? (
+            <EmailOtpStep
+              email={otp.email}
+              previewCode={otp.previewCode}
+              error={error}
+              onSubmit={confirmCode}
+              onResend={resend}
+              onBack={back}
+            />
+          ) : (
+          <>
           <h2>Create account</h2>
           <form className="stack" onSubmit={submit} style={{ marginTop: 18 }}>
             {error ? <div className="form-error">{error}</div> : null}
@@ -71,8 +112,10 @@ export function RegisterPage() {
             <Button type="submit" block>Create account</Button>
           </form>
           <p className="quiet" style={{ marginTop: 14 }}>
-            Already registered? <Link to="/login"><strong>Sign in</strong></Link>
+            Already registered? <Link to="/login" onClick={cancelOtp}><strong>Sign in</strong></Link>
           </p>
+          </>
+          )}
         </div>
       </section>
     </div>
