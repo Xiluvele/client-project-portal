@@ -17,6 +17,7 @@ import { homeFor } from './lib/roles'
 import { useAppState } from './state/useAppState'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { UsersPage } from './pages/admin/UsersPage'
+import { AdminInvoicesPage } from './pages/admin/AdminInvoicesPage'
 import { DeveloperTasksPage } from './pages/developer/DeveloperTasksPage'
 import { DeveloperProjectPage } from './pages/developer/DeveloperProjectPage'
 import { NotificationsPage } from './pages/shared/NotificationsPage'
@@ -56,7 +57,7 @@ export default function App() {
         <Route path="dashboard" element={<ClientDashboardPage />} />
         <Route path="projects" element={<ClientProjectsPage />} />
         <Route path="projects/:projectId" element={<ClientProjectPage />} />
-        <Route path="invoices" element={<ClientInvoicesPage />} />
+        <Route path="invoices" element={<AdminInvoicesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="/developer" element={<RequireAuth role="developer"><AppShell audience="developer" /></RequireAuth>}>
@@ -69,6 +70,7 @@ export default function App() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<AdminDashboardPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

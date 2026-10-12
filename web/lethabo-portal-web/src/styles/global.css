@@ -465,3 +465,75 @@ table.data tr:first-child td { border-top: 0; }
   .stat-grid, .board, .team-grid, .client-grid, .milestones { grid-template-columns: 1fr; }
   .line-item { grid-template-columns: 1fr; }
 }
+/* ---------- Admin invoices ---------- */
+.invoice-totals { display: flex; flex-wrap: wrap; gap: 40px; margin: 0 0 22px; }
+.invoice-total {
+  border-left: 5px solid var(--yellow);
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.invoice-total strong { font-size: 28px; line-height: 1.1; letter-spacing: -0.04em; font-weight: 750; }
+.invoice-total span { color: var(--muted-strong); margin-top: 2px; }
+
+.invoice-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+}
+.invoice-badge--paid    { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
+.invoice-badge--sent    { background: #fff; color: var(--ink); border-color: var(--ink); }
+.invoice-badge--overdue { background: var(--ink); color: var(--yellow); border-color: var(--ink); }
+.invoice-badge--draft   { background: transparent; color: var(--muted-strong); border: 1.5px dashed #b6bac2; }
+
+.invoice-action { text-align: right; }
+.invoice-action button {
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.invoice-action .btn-mark-paid { background: #fff; color: var(--ink); border: 1.5px solid var(--ink); }
+.invoice-action .btn-mark-paid:hover { background: var(--ink); color: #fff; }
+.invoice-action .btn-send { background: var(--yellow); color: var(--ink); border: 1.5px solid var(--yellow); }
+.invoice-action .btn-send:hover { background: var(--yellow-deep); border-color: var(--yellow-deep); }
+/* ---------- User row actions ---------- */
+.row-actions { display: flex; align-items: center; gap: 4px; }
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.icon-btn:hover { background: #f1f2f4; color: var(--ink); }
+.icon-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.icon-btn--danger:hover { background: var(--red-soft); color: var(--red); }
+.icon-btn--ok:hover { background: var(--green-soft); color: var(--green); }
+
+/* ---------- User details modal ---------- */
+.detail-list { margin: 0; display: flex; flex-direction: column; }
+.detail-list > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid #f1f2f4;
+}
+.detail-list > div:first-child { border-top: 0; }
+.detail-list dt { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
+.detail-list dd { margin: 0; font-weight: 650; text-align: right; }
