@@ -11,7 +11,7 @@ export function AdminDashboardPage() {
   const atRisk = projects.filter((project) => projectHealth(project, changeRequests) === 'at_risk')
   return (
     <>
-      <PageIntro title="Project health" subtitle="On track or at risk, from progress, overdue tasks, and open change requests." />
+      <PageIntro title="Good Afternoon, Admin" />
       <div className="stat-grid">
         <StatCard dark label="PROJECTS" value={projects.length} hint="Company-wide" hintTone="yellow" />
         <StatCard label="AT RISK" value={atRisk.length} hint="Needs a project manager" hintTone="danger" />
@@ -25,7 +25,7 @@ export function AdminDashboardPage() {
               <tr>
                 <th>Client / Project</th>
                 <th>Progress</th>
-                <th>Health</th>
+                <th>Delivery Status</th>
               </tr>
             </thead>
             <tbody>
@@ -45,7 +45,7 @@ export function AdminDashboardPage() {
             </tbody>
           </table>
         </div>
-        <p className="quiet">User accounts are managed separately. <Link to="/admin/users">Open user management</Link></p>
+        <p className="quiet">Need to add or update team members and clients? <Link to="/admin/users">Go to Team & Access</Link></p>
       </Card>
     </>
   )
