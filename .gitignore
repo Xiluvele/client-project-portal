@@ -1,13 +1,18 @@
 # Visual Studio Code
 .vscode/
 
+# =========================
 # .NET
+# =========================
 bin/
 obj/
+publish/
 *.user
 *.suo
 
+# =========================
 # Node / React
+# =========================
 node_modules/
 dist/
 
@@ -16,25 +21,33 @@ dist/
 .env.local
 .env.*.local
 
+# =========================
 # Flutter
+# =========================
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .packages
 build/
 
+# =========================
 # Android
+# =========================
 .gradle/
 local.properties
 
+# =========================
 # iOS
+# =========================
 Pods/
 
-# Environment / secrets
+# =========================
+# Environment / Secrets
+# =========================
 *.env
 secrets/
 
+# =========================
 # Visual Studio
+# =========================
 .vs/
-bin/
-obj/
