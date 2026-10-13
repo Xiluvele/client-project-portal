@@ -1,16 +1,27 @@
-import { INVOICE_STATUSES, PROJECT_STATUSES, statusLabel, TASK_TYPES } from '../../domain/catalog'
+import { PROJECT_STATUSES, statusLabel, TASK_TYPES } from '../../domain/catalog'
 import { cx } from '../../lib/format'
 
 const GROUPS = {
   project: PROJECT_STATUSES,
-  invoice: INVOICE_STATUSES,
   task: TASK_TYPES,
 }
 
+const INVOICE_LABELS = {
+  draft: 'Draft',
+  sent: 'Sent',
+  pending: 'Sent',
+  overdue: 'Overdue',
+  paid: 'Paid',
+  cancelled: 'Cancelled',
+}
+
 export function StatusBadge({ status, group = 'project', label }) {
-  const text = label ?? (group === 'approval'
-    ? status === 'approved' ? 'Approved' : status === 'pending' ? 'Awaiting approval' : ''
-    : statusLabel(GROUPS[group] ?? [], status))
+  let text = label
+  if (!text) {
+    if (group === 'approval') text = status === 'approved' ? 'Approved' : status === 'pending' ? 'Awaiting approval' : ''
+    else if (group === 'invoice') text = INVOICE_LABELS[status] ?? status
+    else text = statusLabel(GROUPS[group] ?? [], status)
+  }
   if (!text) return null
   return <span className={cx('badge', `badge--${status}`)}>{text}</span>
 }

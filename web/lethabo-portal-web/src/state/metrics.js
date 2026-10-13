@@ -1,4 +1,5 @@
 import { projectProgress } from '../domain/catalog'
+import { effectiveStatus, todayISO } from '../lib/invoiceDates'
 
 export function projectHealth(project, changeRequests = []) {
   const openChange = changeRequests.some(
@@ -10,8 +11,11 @@ export function projectHealth(project, changeRequests = []) {
 }
 
 export function invoiceTotal(invoice) {
-  return invoice.items.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+  return (invoice.items ?? []).reduce((sum, item) => sum + Number(item.qty ?? 1) * Number(item.amount || 0), 0)
 }
+
+const isOpen = (invoice) => ['sent', 'overdue'].includes(effectiveStatus(invoice))
+const totalOf = (list) => list.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0)
 
 export function clientById(clients, clientId) {
   return clients.find((client) => client.id === clientId)
@@ -25,8 +29,9 @@ export function projectsForClient(projects, clientId) {
   return projects.filter((project) => project.clientId === clientId)
 }
 
+// Clients never see drafts
 export function invoicesForClient(invoices, clientId) {
-  return invoices.filter((invoice) => invoice.clientId === clientId)
+  return invoices.filter((invoice) => invoice.clientId === clientId && invoice.status !== 'draft')
 }
 
 export function unreadClientComments(projects, clientId) {
@@ -38,12 +43,12 @@ export function unreadClientComments(projects, clientId) {
 
 export function managerMetrics(projects, invoices, members) {
   const active = projects.filter((project) => project.status !== 'done')
-  const openInvoices = invoices.filter((invoice) => invoice.status === 'pending' || invoice.status === 'overdue')
+  const openInvoices = invoices.filter(isOpen)
   const allocated = members.filter((member) => member.allocated).length
   return {
     activeCount: active.length,
     dueThisWeek: active.filter((project) => project.dueThisWeek).length,
-    pendingAmount: openInvoices.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0),
+    pendingAmount: totalOf(openInvoices),
     awaitingCount: openInvoices.length,
     unreadCount: unreadClientComments(projects).length,
     utilisation: members.length ? Math.round((allocated / members.length) * 100) : 0,
@@ -51,19 +56,31 @@ export function managerMetrics(projects, invoices, members) {
 }
 
 export function invoiceMetrics(invoices) {
-  const outstanding = invoices.filter((invoice) => invoice.status === 'pending' || invoice.status === 'overdue')
-  const overdue = invoices.filter((invoice) => invoice.status === 'overdue')
-  const paid = invoices.filter((invoice) => invoice.status === 'paid')
+  const month = todayISO().slice(0, 7)
+  const byState = (state) => invoices.filter((invoice) => effectiveStatus(invoice) === state)
+  const open = invoices.filter(isOpen)
+  const overdue = byState('overdue')
+  const drafts = byState('draft')
+  const paid = byState('paid')
+  const paidThisMonth = paid.filter((invoice) =>
+    String(invoice.paidAt ?? invoice.dueAt ?? invoice.issuedAt ?? '').startsWith(month),
+  )
   return {
-    outstanding: outstanding.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0),
-    paid: paid.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0),
-    overdue: overdue.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0),
+    outstanding: totalOf(open),
+    outstandingCount: open.length,
+    paid: totalOf(paid),
+    paidThisMonth: totalOf(paidThisMonth),
+    paidThisMonthCount: paidThisMonth.length,
+    overdue: totalOf(overdue),
+    overdueCount: overdue.length,
+    drafts: totalOf(drafts),
+    draftCount: drafts.length,
   }
 }
 
 export function clientMetrics(projects, invoices) {
   const active = projects.filter((project) => project.status !== 'done')
-  const openInvoices = invoices.filter((invoice) => invoice.status === 'pending' || invoice.status === 'overdue')
+  const openInvoices = invoices.filter((invoice) => invoice.status !== 'draft').filter(isOpen)
   const progressValues = projects.map((project) => projectProgress(project))
   const average = progressValues.length
     ? Math.round(progressValues.reduce((sum, value) => sum + value, 0) / progressValues.length)
@@ -75,7 +92,7 @@ export function clientMetrics(projects, invoices) {
   return {
     activeCount: active.length,
     averageProgress: average,
-    outstanding: openInvoices.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0),
+    outstanding: totalOf(openInvoices),
     openInvoiceCount: openInvoices.length,
     pendingApprovals,
   }

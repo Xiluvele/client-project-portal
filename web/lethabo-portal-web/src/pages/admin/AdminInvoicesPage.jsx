@@ -1,18 +1,10 @@
-import { useState } from 'react'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Card } from '../../components/ui/Card'
+import { effectiveStatus, invoiceTotal } from '../../lib/invoiceDates'
+import { useAppState } from '../../state/useAppState'
 
 const money = (value) => `R ${new Intl.NumberFormat('en-ZA').format(value)}`
-const sum = (list) => list.reduce((total, inv) => total + inv.amount, 0)
-
-const SEED_INVOICES = [
-  { id: 'INV-0041', label: 'Deposit', project: 'Mokoena Hardware online store', amount: 45000, due: '5 Aug', status: 'paid' },
-  { id: 'INV-0047', label: 'Design approved milestone', project: 'Mokoena Hardware online store', amount: 38500, due: '15 Oct', status: 'sent' },
-  { id: 'INV-0049', label: 'Deposit', project: 'Ubuntu Learning Hub results portal', amount: 30000, due: '25 Sept', status: 'overdue' },
-  { id: 'INV-0044', label: 'Deposit', project: 'Karoo Freight tracking dashboard', amount: 62000, due: '1 Jul', status: 'paid' },
-  { id: 'INV-0050', label: 'Final payment', project: 'Karoo Freight tracking dashboard', amount: 26000, due: '30 Oct', status: 'sent' },
-  { id: 'INV-0052', label: 'Deposit', project: 'Bophelo Clinic booking website', amount: 18000, due: '14 Oct', status: 'draft' },
-]
+const sum = (list) => list.reduce((total, inv) => total + invoiceTotal(inv), 0)
 
 const CheckIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -28,14 +20,14 @@ const ClockIcon = () => (
 )
 
 const STATUS = {
-  paid: { label: 'Paid', icon: <CheckIcon /> },
   sent: { label: 'Sent', icon: null },
   overdue: { label: 'Overdue', icon: <ClockIcon /> },
-  draft: { label: 'Draft', icon: null },
+  paid: { label: 'Paid', icon: <CheckIcon /> },
+  cancelled: { label: 'Cancelled', icon: null },
 }
 
 function InvoiceBadge({ status }) {
-  const { label, icon } = STATUS[status]
+  const { label, icon } = STATUS[status] ?? { label: status, icon: null }
   return (
     <span className={`invoice-badge invoice-badge--${status}`}>
       {icon}
@@ -45,20 +37,21 @@ function InvoiceBadge({ status }) {
 }
 
 export function AdminInvoicesPage() {
-  const [invoices, setInvoices] = useState(SEED_INVOICES)
+  const { invoices, clients, projects, users, markInvoicePaid } = useAppState()
 
-  const setStatus = (id, status) =>
-    setInvoices((list) => list.map((inv) => (inv.id === id ? { ...inv, status } : inv)))
+  const rows = invoices
+    .map((inv) => ({ ...inv, state: effectiveStatus(inv) }))
+    .filter((inv) => inv.state !== 'draft')
 
-  const outstanding = sum(invoices.filter((inv) => inv.status === 'sent' || inv.status === 'overdue'))
-  const overdue = sum(invoices.filter((inv) => inv.status === 'overdue'))
-  const paid = sum(invoices.filter((inv) => inv.status === 'paid'))
+  const outstanding = sum(rows.filter((r) => r.state === 'sent' || r.state === 'overdue'))
+  const overdue = sum(rows.filter((r) => r.state === 'overdue'))
+  const paid = sum(rows.filter((r) => r.state === 'paid'))
 
   return (
     <>
       <PageIntro
         title="Invoices"
-        subtitle="Invoices appear in the client's Android app once they are sent."
+        subtitle="Every invoice sent by a project manager. Mark them as paid here and the manager sees it straight away."
       />
 
       <div className="invoice-totals">
@@ -73,41 +66,49 @@ export function AdminInvoicesPage() {
             <thead>
               <tr>
                 <th>Invoice</th>
-                <th>Project</th>
+                <th>Client / Project</th>
                 <th>Amount</th>
-                <th>Due</th>
+                <th>Invoice date</th>
+                <th>Due date</th>
                 <th>Payment</th>
+                <th>Sent by</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id}>
-                  <td>
-                    <div className="cell-title">{inv.id}</div>
-                    <div className="cell-sub">{inv.label}</div>
-                  </td>
-                  <td>{inv.project}</td>
-                  <td><strong>{money(inv.amount)}</strong></td>
-                  <td>{inv.due}</td>
-                  <td><InvoiceBadge status={inv.status} /></td>
-                  <td className="invoice-action">
-                    {(inv.status === 'sent' || inv.status === 'overdue') && (
-                      <button type="button" className="btn-mark-paid" onClick={() => setStatus(inv.id, 'paid')}>
-                        Mark paid
-                      </button>
-                    )}
-                    {inv.status === 'draft' && (
-                      <button type="button" className="btn-send" onClick={() => setStatus(inv.id, 'sent')}>
-                        Send to client
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((inv) => {
+                const client = clients.find((c) => c.id === inv.clientId)
+                const project = projects.find((p) => p.id === inv.projectId)
+                const sender = users.find((u) => u.id === inv.sentBy)
+                return (
+                  <tr key={inv.id}>
+                    <td>
+                      <div className="cell-title">#{inv.number}</div>
+                      <div className="cell-sub">{inv.title}</div>
+                    </td>
+                    <td>
+                      <div className="cell-title">{client?.name}</div>
+                      <div className="cell-sub">{project?.name}</div>
+                    </td>
+                    <td><strong>{money(invoiceTotal(inv))}</strong></td>
+                    <td>{inv.issuedLabel}</td>
+                    <td>{inv.dueLabel}</td>
+                    <td><InvoiceBadge status={inv.state} /></td>
+                    <td>{sender?.name ?? '—'}</td>
+                    <td className="invoice-action">
+                      {(inv.state === 'sent' || inv.state === 'overdue') && (
+                        <button type="button" className="btn-mark-paid" onClick={() => markInvoicePaid(inv.id)}>
+                          Mark paid
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
+        {rows.length === 0 ? <p className="empty">No invoices have been sent yet.</p> : null}
       </Card>
     </>
   )

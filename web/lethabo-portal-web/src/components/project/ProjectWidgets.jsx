@@ -5,9 +5,37 @@ import { formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
 import { Avatar, AvatarStack } from '../ui/Avatar'
 import { Button } from '../ui/Button'
-import { ProgressBar } from '../ui/Card'
 import { Modal } from '../ui/Modal'
 import { StatusBadge } from '../ui/StatusBadge'
+
+const iconProps = {
+  width: 16,
+  height: 16,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round',
+  strokeLinejoin: 'round',
+  'aria-hidden': true,
+}
+
+const ViewIcon = () => (
+  <svg {...iconProps}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+const TrashIcon = () => (
+  <svg {...iconProps}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4h8v2" />
+    <path d="M19 6l-1 14H6L5 6" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
+  </svg>
+)
 
 export function TaskBoard({ project }) {
   const { members, moveTask } = useAppState()
@@ -115,11 +143,11 @@ export function ProjectTable({ projects, clients, members, to, onDelete }) {
         <thead>
           <tr>
             <th>Client / Project</th>
-            <th>Progress</th>
-            <th>Status</th>
+            <th>Completion</th>
+            <th>Stage</th>
             <th>Team</th>
             <th>Due</th>
-            <th></th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -132,14 +160,31 @@ export function ProjectTable({ projects, clients, members, to, onDelete }) {
                   <div className="cell-title">{client?.name}</div>
                   <div className="cell-sub">{project.name}</div>
                 </td>
-                <td className="progress-cell"><ProgressBar value={projectProgress(project)} thin /></td>
+                <td className="completion-value">{projectProgress(project)}%</td>
                 <td><StatusBadge status={project.status} /></td>
                 <td><AvatarStack people={people} /></td>
                 <td>{project.dueLabel}</td>
                 <td>
-                  <div className="task__actions">
-                    <Link className="btn btn--secondary btn--small" to={to(project.id)}>View</Link>
-                    {onDelete ? <Button size="small" variant="ghost" onClick={() => setPending(project)}>Delete</Button> : null}
+                  <div className="row-actions">
+                    <Link
+                      className="icon-btn"
+                      to={to(project.id)}
+                      title="View project"
+                      aria-label={`View ${project.name}`}
+                    >
+                      <ViewIcon />
+                    </Link>
+                    {onDelete ? (
+                      <button
+                        className="icon-btn icon-btn--danger"
+                        type="button"
+                        title="Delete project"
+                        aria-label={`Delete ${project.name}`}
+                        onClick={() => setPending(project)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    ) : null}
                   </div>
                 </td>
               </tr>
