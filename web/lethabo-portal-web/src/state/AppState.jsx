@@ -4,6 +4,7 @@ import { teamMembers, cloneSeed } from '../data/seed'
 import { createId } from '../lib/format'
 import { assessOtp, createOtpChallenge } from '../lib/otp'
 import { roleLabel } from '../lib/roles'
+import { addDaysISO, dateLabel, effectiveStatus, todayISO } from '../lib/invoiceDates'
 
 const SESSION_KEY = 'lethabo-connect-session'
 
@@ -352,49 +353,101 @@ export function AppStateProvider({ children }) {
     notify(managerIds(), `${client?.name ?? 'A client'} approved ${fileName}.`, projectId)
   }
 
-  const createInvoice = ({ clientId, projectId, dueLabel, items }) => {
-    const number = `INV${230 + invoices.length + 1}`
-    const invoice = {
-      id: createId('invoice'),
-      number,
-      clientId,
-      projectId,
-      title: items[0]?.description || 'Invoice',
-      status: 'pending',
-      issuedLabel: new Date().toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }),
-      dueLabel,
-      items: items.map((item) => ({ ...item, id: createId('line'), amount: Number(item.amount) })),
-    }
-    setInvoices((current) => [invoice, ...current])
+ const generateInvoice = ({ clientId, projectId, issuedAt, dueAt, items, send = true }) => {
+  const highest = invoices.reduce(
+    (max, item) => Math.max(max, parseInt(String(item.number).replace(/\D/g, ''), 10) || 0),
+    230,
+  )
+  const number = `INV${highest + 1}`
+  const issued = issuedAt || todayISO()
+  const due = dueAt || addDaysISO(issued, 14)
+  const invoice = {
+    id: createId('invoice'),
+    number,
+    clientId,
+    projectId,
+    title: items[0]?.description || 'Invoice',
+    status: send ? 'sent' : 'draft',
+    issuedAt: issued,
+    dueAt: due,
+    issuedLabel: dateLabel(issued),
+    dueLabel: dateLabel(due),
+    sentBy: user?.id ?? null,
+    items: items.map((item) => ({ ...item, id: createId('line'), qty: Number(item.qty) || 1, amount: Number(item.amount) })),
+  }
+  setInvoices((current) => [invoice, ...current])
+  if (send) {
     const client = clients.find((item) => item.id === clientId)
     addActivity(projectId, `Invoice ${number} was sent to ${client?.name ?? 'the client'}`)
     notify(clientUserIds(clientId), `Invoice ${number} is ready to view.`, projectId)
-    return invoice
   }
+  return invoice
+}
 
-  const updateInvoice = (invoiceId, patch) => {
-    const invoice = invoices.find((item) => item.id === invoiceId)
-    if (!invoice || invoice.status === 'paid') return { ok: false, message: 'Paid invoices cannot be changed.' }
-    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, ...patch } : item)))
-    return { ok: true }
+// Only drafts can be edited. Pass send = true to save and send in one step.
+const updateInvoice = (invoiceId, patch, send = false) => {
+  const invoice = invoices.find((item) => item.id === invoiceId)
+  if (!invoice) return { ok: false, message: 'That invoice could not be found.' }
+  if (invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be edited.' }
+  const next = { ...patch }
+  if (patch.items) {
+    next.items = patch.items.map((item) => ({ ...item, qty: Number(item.qty) || 1, amount: Number(item.amount) }))
   }
-
-  const cancelInvoice = (invoiceId) => {
-    const invoice = invoices.find((item) => item.id === invoiceId)
-    if (!invoice || invoice.status === 'paid' || invoice.status === 'cancelled') return
-    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'cancelled' } : item)))
-    addActivity(invoice.projectId, `Invoice ${invoice.number} was cancelled`)
-    notify(clientUserIds(invoice.clientId), `Invoice ${invoice.number} was cancelled.`, invoice.projectId)
+  if (patch.issuedAt) next.issuedLabel = dateLabel(patch.issuedAt)
+  if (patch.dueAt) next.dueLabel = dateLabel(patch.dueAt)
+  const merged = { ...invoice, ...next, ...(send ? { status: 'sent' } : {}) }
+  setInvoices((current) => current.map((item) => (item.id === invoiceId ? merged : item)))
+  if (send) {
+    const client = clients.find((item) => item.id === merged.clientId)
+    addActivity(merged.projectId, `Invoice ${merged.number} was sent to ${client?.name ?? 'the client'}`)
+    notify(clientUserIds(merged.clientId), `Invoice ${merged.number} is ready to view.`, merged.projectId)
   }
+  return { ok: true, invoice: merged }
+}
 
-  const remindInvoice = (invoiceId) => {
-    const invoice = invoices.find((item) => item.id === invoiceId)
-    if (!invoice || invoice.status === 'paid') return
-    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, reminded: true } : item)))
-    const client = clients.find((item) => item.id === invoice.clientId)
-    addActivity(invoice.projectId, `Payment reminder sent to ${client?.name ?? 'the client'} for ${invoice.number}`)
+const sendInvoice = (invoiceId) => updateInvoice(invoiceId, {}, true)
+
+const deleteInvoice = (invoiceId) => {
+  const invoice = invoices.find((item) => item.id === invoiceId)
+  if (!invoice || invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be deleted.' }
+  setInvoices((current) => current.filter((item) => item.id !== invoiceId))
+  return { ok: true }
+}
+
+const markInvoicePaid = (invoiceId) => {
+  const invoice = invoices.find((item) => item.id === invoiceId)
+  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+    return { ok: false, message: 'Only sent invoices can be marked as paid.' }
   }
+  const paidAt = todayISO()
+  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'paid', paidAt } : item)))
+  addActivity(invoice.projectId, `Invoice ${invoice.number} was marked as paid`)
+  notify([...clientUserIds(invoice.clientId), ...managerIds()], `Invoice ${invoice.number} was marked as paid.`, invoice.projectId)
+  return { ok: true }
+}
 
+const cancelInvoice = (invoiceId) => {
+  const invoice = invoices.find((item) => item.id === invoiceId)
+  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+    return { ok: false, message: 'Only sent invoices can be cancelled.' }
+  }
+  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'cancelled' } : item)))
+  addActivity(invoice.projectId, `Invoice ${invoice.number} was cancelled`)
+  notify(clientUserIds(invoice.clientId), `Invoice ${invoice.number} was cancelled.`, invoice.projectId)
+  return { ok: true }
+}
+
+const remindInvoice = (invoiceId) => {
+  const invoice = invoices.find((item) => item.id === invoiceId)
+  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+    return { ok: false, message: 'Only sent invoices can have a reminder.' }
+  }
+  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, reminded: true } : item)))
+  const client = clients.find((item) => item.id === invoice.clientId)
+  addActivity(invoice.projectId, `Payment reminder sent to ${client?.name ?? 'the client'} for ${invoice.number}`)
+  notify(clientUserIds(invoice.clientId), `Reminder: invoice ${invoice.number} is due ${invoice.dueLabel}.`, invoice.projectId)
+  return { ok: true }
+}
   const addMilestone = (projectId, { name, targetLabel }) => {
     const errors = {}
     if (!name?.trim()) errors.name = 'Enter a milestone name.'
@@ -560,8 +613,9 @@ export function AppStateProvider({ children }) {
     markProjectCommentsRead,
     addFile,
     approveFile,
-    createInvoice,
+    generateInvoice,
     updateInvoice,
+    markInvoicePaid,
     cancelInvoice,
     remindInvoice,
     addMilestone,

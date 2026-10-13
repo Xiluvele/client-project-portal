@@ -537,3 +537,17 @@ table.data tr:first-child td { border-top: 0; }
 .detail-list > div:first-child { border-top: 0; }
 .detail-list dt { color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; }
 .detail-list dd { margin: 0; font-weight: 650; text-align: right; }
+.completion-value { font-weight: 700; font-variant-numeric: tabular-nums; }
+.invoice-badge--pending   { background: #fff; color: var(--ink); border-color: var(--ink); }
+.invoice-badge--cancelled { background: #f2f3f5; color: var(--muted-strong); border-color: #d9dbe0; }
+/* ---------- Invoice statuses ---------- */
+.badge--sent { background: var(--yellow-soft); color: #7a6200; }
+.badge--draft { background: transparent; color: var(--muted-strong); border: 1.5px dashed #b6bac2; padding: 2.5px 8.5px; }
+
+/* ---------- Generate invoice form and invoice details ---------- */
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.invoice-lines-head,
+.invoice-line { display: grid; grid-template-columns: minmax(0, 1fr) 64px 110px 64px; gap: 8px; align-items: center; }
+.invoice-lines-head { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.detail-line { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid #f1f2f4; }
+.detail-line:first-child { border-top: 0; }
