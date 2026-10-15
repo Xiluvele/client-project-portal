@@ -42,6 +42,7 @@ export function AppStateProvider({ children }) {
   const [notifications, setNotifications] = useState(seed.notifications)
   const [session, setSession] = useState(() => readSession())
   const [otpChallenge, setOtpChallenge] = useState(null)
+  const [auditLog, setAuditLog] = useState([])
 
   const record = users.find((item) => item.id === session?.id) ?? null
   const user = record && record.active !== false ? record : null
@@ -53,9 +54,22 @@ export function AppStateProvider({ children }) {
     else localStorage.removeItem(SESSION_KEY)
   }
 
+  // Records who did what. The actor defaults to the signed-in user.
+  const addAudit = (event) =>
+    setAuditLog((current) => [
+      {
+        id: createId('audit'),
+        at: new Date().toISOString(),
+        actor: user?.name ?? 'Unknown',
+        ...event,
+      },
+      ...current,
+    ])
+
   const login = (email, password) => {
     const match = users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase())
     if (!match || match.active === false) {
+      addAudit({ actor: 'Unknown', type: 'signin_failed', category: 'signins', target: email.trim() })
       return { ok: false, message: match?.active === false
         ? 'This account has been deactivated. Contact an administrator.'
         : 'Email or password does not match our records.' }
@@ -64,6 +78,7 @@ export function AppStateProvider({ children }) {
       return { ok: false, message: 'This account is temporarily locked after repeated failed sign-ins.' }
     }
     if (match.password !== password) {
+      addAudit({ actor: 'Unknown', type: 'signin_failed', category: 'signins', target: match.email })
       const failedAttempts = (match.failedAttempts ?? 0) + 1
       const locked = failedAttempts >= 3
       setUsers((current) => current.map((item) => (item.id === match.id ? { ...item, failedAttempts, locked } : item)))
@@ -137,6 +152,7 @@ export function AppStateProvider({ children }) {
       if (!match || match.active === false) {
         return { ok: false, message: 'This account can no longer sign in. Contact an administrator.' }
       }
+      addAudit({ actor: match.name, type: 'signin', category: 'signins', target: match.email })
       persist(match)
       return { ok: true, user: publicUser(match) }
     }
@@ -222,6 +238,7 @@ export function AppStateProvider({ children }) {
     const client = clients.find((item) => item.id === clientId)
     addActivity(project.id, `${client?.name ?? 'A client'} was added to ${project.name}`)
     notify(clientUserIds(clientId), `${project.name} is now visible on your account.`, project.id)
+    addAudit({ type: 'project_created', category: 'projects', target: project.name })
     return { ok: true, project }
   }
 
@@ -353,101 +370,102 @@ export function AppStateProvider({ children }) {
     notify(managerIds(), `${client?.name ?? 'A client'} approved ${fileName}.`, projectId)
   }
 
- const generateInvoice = ({ clientId, projectId, issuedAt, dueAt, items, send = true }) => {
-  const highest = invoices.reduce(
-    (max, item) => Math.max(max, parseInt(String(item.number).replace(/\D/g, ''), 10) || 0),
-    230,
-  )
-  const number = `INV${highest + 1}`
-  const issued = issuedAt || todayISO()
-  const due = dueAt || addDaysISO(issued, 14)
-  const invoice = {
-    id: createId('invoice'),
-    number,
-    clientId,
-    projectId,
-    title: items[0]?.description || 'Invoice',
-    status: send ? 'sent' : 'draft',
-    issuedAt: issued,
-    dueAt: due,
-    issuedLabel: dateLabel(issued),
-    dueLabel: dateLabel(due),
-    sentBy: user?.id ?? null,
-    items: items.map((item) => ({ ...item, id: createId('line'), qty: Number(item.qty) || 1, amount: Number(item.amount) })),
+  const generateInvoice = ({ clientId, projectId, issuedAt, dueAt, items, send = true }) => {
+    const highest = invoices.reduce(
+      (max, item) => Math.max(max, parseInt(String(item.number).replace(/\D/g, ''), 10) || 0),
+      230,
+    )
+    const number = `INV${highest + 1}`
+    const issued = issuedAt || todayISO()
+    const due = dueAt || addDaysISO(issued, 14)
+    const invoice = {
+      id: createId('invoice'),
+      number,
+      clientId,
+      projectId,
+      title: items[0]?.description || 'Invoice',
+      status: send ? 'sent' : 'draft',
+      issuedAt: issued,
+      dueAt: due,
+      issuedLabel: dateLabel(issued),
+      dueLabel: dateLabel(due),
+      sentBy: user?.id ?? null,
+      items: items.map((item) => ({ ...item, id: createId('line'), qty: Number(item.qty) || 1, amount: Number(item.amount) })),
+    }
+    setInvoices((current) => [invoice, ...current])
+    if (send) {
+      const client = clients.find((item) => item.id === clientId)
+      addActivity(projectId, `Invoice ${number} was sent to ${client?.name ?? 'the client'}`)
+      notify(clientUserIds(clientId), `Invoice ${number} is ready to view.`, projectId)
+    }
+    return invoice
   }
-  setInvoices((current) => [invoice, ...current])
-  if (send) {
-    const client = clients.find((item) => item.id === clientId)
-    addActivity(projectId, `Invoice ${number} was sent to ${client?.name ?? 'the client'}`)
-    notify(clientUserIds(clientId), `Invoice ${number} is ready to view.`, projectId)
-  }
-  return invoice
-}
 
-// Only drafts can be edited. Pass send = true to save and send in one step.
-const updateInvoice = (invoiceId, patch, send = false) => {
-  const invoice = invoices.find((item) => item.id === invoiceId)
-  if (!invoice) return { ok: false, message: 'That invoice could not be found.' }
-  if (invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be edited.' }
-  const next = { ...patch }
-  if (patch.items) {
-    next.items = patch.items.map((item) => ({ ...item, qty: Number(item.qty) || 1, amount: Number(item.amount) }))
+  // Only drafts can be edited. Pass send = true to save and send in one step.
+  const updateInvoice = (invoiceId, patch, send = false) => {
+    const invoice = invoices.find((item) => item.id === invoiceId)
+    if (!invoice) return { ok: false, message: 'That invoice could not be found.' }
+    if (invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be edited.' }
+    const next = { ...patch }
+    if (patch.items) {
+      next.items = patch.items.map((item) => ({ ...item, qty: Number(item.qty) || 1, amount: Number(item.amount) }))
+    }
+    if (patch.issuedAt) next.issuedLabel = dateLabel(patch.issuedAt)
+    if (patch.dueAt) next.dueLabel = dateLabel(patch.dueAt)
+    const merged = { ...invoice, ...next, ...(send ? { status: 'sent' } : {}) }
+    setInvoices((current) => current.map((item) => (item.id === invoiceId ? merged : item)))
+    if (send) {
+      const client = clients.find((item) => item.id === merged.clientId)
+      addActivity(merged.projectId, `Invoice ${merged.number} was sent to ${client?.name ?? 'the client'}`)
+      notify(clientUserIds(merged.clientId), `Invoice ${merged.number} is ready to view.`, merged.projectId)
+    }
+    return { ok: true, invoice: merged }
   }
-  if (patch.issuedAt) next.issuedLabel = dateLabel(patch.issuedAt)
-  if (patch.dueAt) next.dueLabel = dateLabel(patch.dueAt)
-  const merged = { ...invoice, ...next, ...(send ? { status: 'sent' } : {}) }
-  setInvoices((current) => current.map((item) => (item.id === invoiceId ? merged : item)))
-  if (send) {
-    const client = clients.find((item) => item.id === merged.clientId)
-    addActivity(merged.projectId, `Invoice ${merged.number} was sent to ${client?.name ?? 'the client'}`)
-    notify(clientUserIds(merged.clientId), `Invoice ${merged.number} is ready to view.`, merged.projectId)
+
+  const sendInvoice = (invoiceId) => updateInvoice(invoiceId, {}, true)
+
+  const deleteInvoice = (invoiceId) => {
+    const invoice = invoices.find((item) => item.id === invoiceId)
+    if (!invoice || invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be deleted.' }
+    setInvoices((current) => current.filter((item) => item.id !== invoiceId))
+    return { ok: true }
   }
-  return { ok: true, invoice: merged }
-}
 
-const sendInvoice = (invoiceId) => updateInvoice(invoiceId, {}, true)
-
-const deleteInvoice = (invoiceId) => {
-  const invoice = invoices.find((item) => item.id === invoiceId)
-  if (!invoice || invoice.status !== 'draft') return { ok: false, message: 'Only draft invoices can be deleted.' }
-  setInvoices((current) => current.filter((item) => item.id !== invoiceId))
-  return { ok: true }
-}
-
-const markInvoicePaid = (invoiceId) => {
-  const invoice = invoices.find((item) => item.id === invoiceId)
-  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
-    return { ok: false, message: 'Only sent invoices can be marked as paid.' }
+  const markInvoicePaid = (invoiceId) => {
+    const invoice = invoices.find((item) => item.id === invoiceId)
+    if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+      return { ok: false, message: 'Only sent invoices can be marked as paid.' }
+    }
+    const paidAt = todayISO()
+    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'paid', paidAt } : item)))
+    addActivity(invoice.projectId, `Invoice ${invoice.number} was marked as paid`)
+    notify([...clientUserIds(invoice.clientId), ...managerIds()], `Invoice ${invoice.number} was marked as paid.`, invoice.projectId)
+    return { ok: true }
   }
-  const paidAt = todayISO()
-  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'paid', paidAt } : item)))
-  addActivity(invoice.projectId, `Invoice ${invoice.number} was marked as paid`)
-  notify([...clientUserIds(invoice.clientId), ...managerIds()], `Invoice ${invoice.number} was marked as paid.`, invoice.projectId)
-  return { ok: true }
-}
 
-const cancelInvoice = (invoiceId) => {
-  const invoice = invoices.find((item) => item.id === invoiceId)
-  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
-    return { ok: false, message: 'Only sent invoices can be cancelled.' }
+  const cancelInvoice = (invoiceId) => {
+    const invoice = invoices.find((item) => item.id === invoiceId)
+    if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+      return { ok: false, message: 'Only sent invoices can be cancelled.' }
+    }
+    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'cancelled' } : item)))
+    addActivity(invoice.projectId, `Invoice ${invoice.number} was cancelled`)
+    notify(clientUserIds(invoice.clientId), `Invoice ${invoice.number} was cancelled.`, invoice.projectId)
+    return { ok: true }
   }
-  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, status: 'cancelled' } : item)))
-  addActivity(invoice.projectId, `Invoice ${invoice.number} was cancelled`)
-  notify(clientUserIds(invoice.clientId), `Invoice ${invoice.number} was cancelled.`, invoice.projectId)
-  return { ok: true }
-}
 
-const remindInvoice = (invoiceId) => {
-  const invoice = invoices.find((item) => item.id === invoiceId)
-  if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
-    return { ok: false, message: 'Only sent invoices can have a reminder.' }
+  const remindInvoice = (invoiceId) => {
+    const invoice = invoices.find((item) => item.id === invoiceId)
+    if (!invoice || !['sent', 'overdue'].includes(effectiveStatus(invoice))) {
+      return { ok: false, message: 'Only sent invoices can have a reminder.' }
+    }
+    setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, reminded: true } : item)))
+    const client = clients.find((item) => item.id === invoice.clientId)
+    addActivity(invoice.projectId, `Payment reminder sent to ${client?.name ?? 'the client'} for ${invoice.number}`)
+    notify(clientUserIds(invoice.clientId), `Reminder: invoice ${invoice.number} is due ${invoice.dueLabel}.`, invoice.projectId)
+    return { ok: true }
   }
-  setInvoices((current) => current.map((item) => (item.id === invoiceId ? { ...item, reminded: true } : item)))
-  const client = clients.find((item) => item.id === invoice.clientId)
-  addActivity(invoice.projectId, `Payment reminder sent to ${client?.name ?? 'the client'} for ${invoice.number}`)
-  notify(clientUserIds(invoice.clientId), `Reminder: invoice ${invoice.number} is due ${invoice.dueLabel}.`, invoice.projectId)
-  return { ok: true }
-}
+
   const addMilestone = (projectId, { name, targetLabel }) => {
     const errors = {}
     if (!name?.trim()) errors.name = 'Enter a milestone name.'
@@ -536,25 +554,45 @@ const remindInvoice = (invoiceId) => {
     setChangeRequests((current) => current.map((item) => (item.id === requestId ? { ...item, status } : item)))
     addActivity(request.projectId, `Change request marked ${status.replace('_', ' ')}`)
     notify(clientUserIds(request.clientId), `Your change request was updated: ${status.replace('_', ' ')}.`, request.projectId)
+    addAudit({
+      type: 'change_decided',
+      category: 'changes',
+      target: request.description,
+      detail: [['Status', request.status.replace('_', ' '), status.replace('_', ' ')]],
+    })
   }
 
-  const saveAccount = ({ id, name, email, role, title, password, company }) => {
-    const normalised = email.trim().toLowerCase()
+  const saveAccount = ({ id, name, email, role, phone, company, projectId }) => {
+    const normalised = String(email ?? '').trim().toLowerCase()
     if (users.some((item) => item.email.toLowerCase() === normalised && item.id !== id)) {
       return { ok: false, message: 'An account with that email already exists.' }
     }
-    if (!name.trim() || !normalised || !role) return { ok: false, message: 'Name, email, and role are required.' }
+    if (!name?.trim() || !normalised || !role) return { ok: false, message: 'Name, email, and role are required.' }
+    const cleanPhone = (phone ?? '').trim()
+
     if (id) {
+      const before = users.find((item) => item.id === id)
+      if (!before) return { ok: false, message: 'That user could not be found.' }
+      const changes = []
+      if (before.name !== name.trim()) changes.push(['Name', before.name, name.trim()])
+      if (before.email.toLowerCase() !== normalised) changes.push(['Email', before.email, normalised])
+      if (before.role !== role) changes.push(['Role', roleLabel(before.role), roleLabel(role)])
+      if ((before.phone ?? '') !== cleanPhone) changes.push(['Phone', before.phone || 'none', cleanPhone || 'none'])
+
       setUsers((current) => current.map((item) => (item.id === id ? {
         ...item,
         name: name.trim(),
         email: normalised,
         role,
-        title: title.trim() || roleLabel(role),
-        password: password.trim() || item.password,
+        phone: cleanPhone,
+        title: before.role === role ? item.title : roleLabel(role),
       } : item)))
+      if (changes.length) {
+        addAudit({ type: 'user_edited', category: 'accounts', target: name.trim(), detail: changes })
+      }
       return { ok: true }
     }
+
     let clientId = null
     if (role === 'client') {
       if (!company?.trim()) return { ok: false, message: 'A client account needs a company name.' }
@@ -565,21 +603,44 @@ const remindInvoice = (invoiceId) => {
       id: createId('user'),
       name: name.trim(),
       email: normalised,
-      password: password.trim() || 'connect123',
+      password: 'connect123',
       role,
       clientId,
-      memberId: role === 'developer' ? null : null,
-      title: title.trim() || (role === 'client' ? company.trim() : roleLabel(role)),
+      memberId: null,
+      phone: cleanPhone,
+      title: role === 'client' ? company.trim() : roleLabel(role),
       active: true,
     }
     if (role === 'developer') next.memberId = next.id
     setUsers((current) => [...current, next])
+
+    const project = projectId ? projects.find((item) => item.id === projectId) : null
+    if (project && next.memberId) {
+      setProjects((current) => current.map((item) => (
+        item.id === project.id ? { ...item, memberIds: [...new Set([...(item.memberIds ?? []), next.memberId])] } : item
+      )))
+    }
+    addAudit({
+      type: 'user_added',
+      category: 'accounts',
+      target: next.name,
+      detail: [['Role', '', roleLabel(role)], ...(project ? [['Project', '', project.name]] : [])],
+    })
     return { ok: true }
   }
 
   const setAccountActive = (userId, active) => {
     if (userId === user?.id) return { ok: false, message: 'You cannot deactivate the account you are using.' }
+    const account = users.find((item) => item.id === userId)
     setUsers((current) => current.map((item) => (item.id === userId ? { ...item, active, locked: active ? item.locked : true } : item)))
+    if (account) {
+      addAudit({
+        type: active ? 'user_activated' : 'user_deactivated',
+        category: 'accounts',
+        target: account.name,
+        detail: [['Account', active ? 'Deactivated' : 'Active', active ? 'Active' : 'Deactivated']],
+      })
+    }
     return { ok: true }
   }
 
@@ -597,6 +658,8 @@ const remindInvoice = (invoiceId) => {
     changeRequests,
     requirements,
     notifications,
+    auditLog,
+    addAudit,
     members: teamMembers,
     login,
     logout,
@@ -615,6 +678,8 @@ const remindInvoice = (invoiceId) => {
     approveFile,
     generateInvoice,
     updateInvoice,
+    sendInvoice,
+    deleteInvoice,
     markInvoicePaid,
     cancelInvoice,
     remindInvoice,

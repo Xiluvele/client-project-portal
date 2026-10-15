@@ -10,7 +10,37 @@ import { useAppState } from '../../state/useAppState'
 
 const ROLES = ['administrator', 'manager', 'developer', 'client']
 
-const emptyForm = { id: null, name: '', email: '', role: 'developer', title: '', password: '', company: '' }
+const ROLE_HINTS = {
+  administrator: 'Manages people and access, and reads the audit trail.',
+  manager: 'Creates projects, assigns work and handles client requests.',
+  developer: 'Sees only the projects and tasks assigned to them.',
+  client: 'Follows their own projects in the mobile app.',
+}
+
+// There is no password field: the form no longer asks for one.
+const emptyForm = {
+  id: null, name: '', email: '', role: 'developer', phone: '', password: '', company: '', projectId: '',
+}
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function validate(form, users) {
+  const errors = {}
+  if (form.name.trim().length < 2) errors.name = 'Enter the full name.'
+
+  const email = form.email.trim().toLowerCase()
+  if (!EMAIL.test(email)) errors.email = 'Enter a valid email, like name@company.co.za.'
+  else if (users.some((u) => u.id !== form.id && (u.email || '').toLowerCase() === email))
+    errors.email = 'Another user already has this email.'
+
+  if (form.role === 'client' && !form.id && !form.company.trim()) errors.company = 'Enter the client company.'
+
+  const digits = form.phone.replace(/\D/g, '')
+  if (form.phone && (digits.length < 9 || digits.length > 15 || /[^\d\s+\-()]/.test(form.phone)))
+    errors.phone = 'Enter a valid phone number, like 082 123 4567.'
+
+  return errors
+}
 
 const iconProps = {
   width: 16,
@@ -48,12 +78,25 @@ const ActivateIcon = () => (
   </svg>
 )
 
+function FieldError({ message }) {
+  return message ? <p className="field-error" role="alert">{message}</p> : null
+}
+
 export function UsersPage() {
-  const { users, saveAccount, setAccountActive } = useAppState()
+  const { users, projects, clients, saveAccount, setAccountActive } = useAppState()
   const [form, setForm] = useState(emptyForm)
   const [open, setOpen] = useState(false)
   const [viewing, setViewing] = useState(null)
+  const [confirming, setConfirming] = useState(null)
   const [error, setError] = useState('')
+  const [errors, setErrors] = useState({})
+
+  const openAdd = () => {
+    setForm(emptyForm)
+    setError('')
+    setErrors({})
+    setOpen(true)
+  }
 
   const edit = (account) => {
     setForm({
@@ -61,17 +104,30 @@ export function UsersPage() {
       name: account.name,
       email: account.email,
       role: account.role,
-      title: account.title || '',
+      phone: account.phone || '',
       password: '',
       company: '',
+      projectId: '',
     })
     setError('')
+    setErrors({})
     setOpen(true)
   }
 
+  const set = (field) => (event) => setForm({ ...form, [field]: event.target.value })
+
   const submit = (event) => {
     event.preventDefault()
-    const result = saveAccount(form)
+    const found = validate(form, users)
+    setErrors(found)
+    if (Object.keys(found).length) return
+
+    const result = saveAccount({
+      ...form,
+      name: form.name.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+    })
     if (!result.ok) {
       setError(result.message)
       return
@@ -82,13 +138,26 @@ export function UsersPage() {
   // Always show the latest data for the user being viewed
   const viewed = viewing ? users.find((u) => u.id === viewing) : null
   const viewedInactive = viewed?.active === false
+  const toConfirm = confirming ? users.find((u) => u.id === confirming) : null
+
+  // Staff can be given a project straight away; clients already belong to their company's projects.
+  const canAssignProject = !form.id && (form.role === 'developer' || form.role === 'manager')
+  const projectLabel = (project) => {
+    const client = clients.find((c) => c.id === project.clientId)
+    return client ? `${client.name} - ${project.name}` : project.name
+  }
+
+  const toggleAccount = (account) => {
+    if (account.active === false) setAccountActive(account.id, true)
+    else setConfirming(account.id)
+  }
 
   return (
     <>
       <PageIntro
         title="Team & Access"
         subtitle="View details, add people, and activate or deactivate who can sign in. A duplicate email is rejected."
-        actions={<Button onClick={() => { setForm(emptyForm); setError(''); setOpen(true) }}>Add user</Button>}
+        actions={<Button onClick={openAdd}>Add user</Button>}
       />
       <Card>
         <div className="table-wrap">
@@ -109,7 +178,7 @@ export function UsersPage() {
                   <tr key={account.id}>
                     <td>
                       <div className="cell-title">{account.name}</div>
-                      <div className="cell-sub">{account.title}</div>
+                      <div className="cell-sub">{account.phone}</div>
                     </td>
                     <td>{account.email}</td>
                     <td>{roleLabel(account.role)}</td>
@@ -135,7 +204,7 @@ export function UsersPage() {
                           type="button"
                           title={inactive ? 'Activate: allow sign-in again' : 'Deactivate: block sign-in'}
                           aria-label={inactive ? `Activate ${account.name}` : `Deactivate ${account.name}`}
-                          onClick={() => setAccountActive(account.id, inactive)}
+                          onClick={() => toggleAccount(account)}
                         >
                           {inactive ? <ActivateIcon /> : <DeactivateIcon />}
                         </button>
@@ -156,7 +225,7 @@ export function UsersPage() {
               <div><dt>Full name</dt><dd>{viewed.name}</dd></div>
               <div><dt>Email</dt><dd>{viewed.email}</dd></div>
               <div><dt>Role</dt><dd>{roleLabel(viewed.role)}</dd></div>
-              <div><dt>Job title</dt><dd>{viewed.title || '—'}</dd></div>
+              <div><dt>Phone</dt><dd>{viewed.phone || '—'}</dd></div>
               <div>
                 <dt>Account</dt>
                 <dd>
@@ -174,19 +243,55 @@ export function UsersPage() {
         ) : null}
       </Modal>
 
+      <Modal title="Block this person from signing in?" open={Boolean(toConfirm)} onClose={() => setConfirming(null)}>
+        {toConfirm ? (
+          <div className="stack">
+            <p>
+              {toConfirm.name} will not be able to sign in until you activate the account again.
+              Their projects and history stay as they are.
+            </p>
+            <Button onClick={() => { setAccountActive(toConfirm.id, false); setConfirming(null) }}>
+              Deactivate {toConfirm.name}
+            </Button>
+            <button type="button" className="btn btn--secondary" onClick={() => setConfirming(null)}>
+              Cancel
+            </button>
+          </div>
+        ) : null}
+      </Modal>
+
       <Modal title={form.id ? 'Edit user' : 'Add user'} open={open} onClose={() => setOpen(false)}>
-        <form className="stack" onSubmit={submit}>
+        <form className="stack" onSubmit={submit} noValidate>
           {error ? <div className="form-error">{error}</div> : null}
-          <TextField label="Full name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
-          <TextField label="Email" type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
-          <SelectField label="Role" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })}>
+
+          <TextField label="Full name" value={form.name} onChange={set('name')} />
+          <FieldError message={errors.name} />
+
+          <TextField label="Email" type="email" value={form.email} onChange={set('email')} />
+          <FieldError message={errors.email} />
+
+          <SelectField label="Role" value={form.role} onChange={set('role')}>
             {ROLES.map((role) => <option key={role} value={role}>{roleLabel(role)}</option>)}
           </SelectField>
-          <TextField label="Job title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+          <p className="quiet">{ROLE_HINTS[form.role]}</p>
+
           {form.role === 'client' && !form.id ? (
-            <TextField label="Company" value={form.company} onChange={(event) => setForm({ ...form, company: event.target.value })} required />
+            <>
+              <TextField label="Company" value={form.company} onChange={set('company')} />
+              <FieldError message={errors.company} />
+            </>
           ) : null}
-          <TextField label={form.id ? 'New password (optional)' : 'Password'} type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={form.id ? 'Leave blank to keep the current password' : 'connect123'} />
+
+          <TextField label="Phone number (optional)" type="tel" value={form.phone} onChange={set('phone')} placeholder="082 123 4567" />
+          <FieldError message={errors.phone} />
+
+          {canAssignProject ? (
+            <SelectField label="Assign to a project (optional)" value={form.projectId} onChange={set('projectId')}>
+              <option value="">No project yet</option>
+              {projects.map((project) => <option key={project.id} value={project.id}>{projectLabel(project)}</option>)}
+            </SelectField>
+          ) : null}
+
           <Button type="submit">Save account</Button>
         </form>
       </Modal>
