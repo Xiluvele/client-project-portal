@@ -28,9 +28,8 @@ const DEVELOPER_LINKS = [
 ]
 
 const ADMIN_LINKS = [
-  { to: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { to: '/admin/invoices', label: 'Invoices', icon: 'invoices' },
   { to: '/admin/users', label: 'Team & Access', icon: 'team' },
+  { to: '/admin/audit', label: 'Audit trail', icon: 'invoices' },
 ]
 
 const LINKS = {

@@ -15,9 +15,8 @@ import { ClientProjectPage } from './pages/client/ClientProjectPage'
 import { ClientInvoicesPage } from './pages/client/ClientInvoicesPage'
 import { homeFor } from './lib/roles'
 import { useAppState } from './state/useAppState'
-import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { UsersPage } from './pages/admin/UsersPage'
-import { AdminInvoicesPage } from './pages/admin/AdminInvoicesPage'
+import { AuditTrailPage } from './pages/admin/AuditTrailPage'
 import { DeveloperTasksPage } from './pages/developer/DeveloperTasksPage'
 import { DeveloperProjectPage } from './pages/developer/DeveloperProjectPage'
 import { NotificationsPage } from './pages/shared/NotificationsPage'
@@ -57,7 +56,7 @@ export default function App() {
         <Route path="dashboard" element={<ClientDashboardPage />} />
         <Route path="projects" element={<ClientProjectsPage />} />
         <Route path="projects/:projectId" element={<ClientProjectPage />} />
-        <Route path="invoices" element={<AdminInvoicesPage />} />
+        <Route path="invoices" element={<ClientInvoicesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="/developer" element={<RequireAuth role="developer"><AppShell audience="developer" /></RequireAuth>}>
@@ -67,10 +66,12 @@ export default function App() {
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="/admin" element={<RequireAuth role="administrator"><AppShell audience="administrator" /></RequireAuth>}>
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<AdminDashboardPage />} />
+        <Route index element={<Navigate to="users" replace />} />
         <Route path="users" element={<UsersPage />} />
-        <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
+        <Route path="audit" element={<AuditTrailPage />} />
+        {/* Old links to the removed pages land on Team & Access */}
+        <Route path="dashboard" element={<Navigate to="/admin/users" replace />} />
+        <Route path="invoices" element={<Navigate to="/admin/users" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
