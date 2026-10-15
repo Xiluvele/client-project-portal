@@ -4,7 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 class ProjectsScreen extends StatefulWidget {
-  const ProjectsScreen({super.key});
+  final String userId;
+  final String name;
+  final String email;
+  final String role;
+  final String clientId;
+  final String memberId;
+  final String title;
+
+  const ProjectsScreen({
+    super.key,
+    required this.userId,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.clientId,
+    required this.memberId,
+    required this.title,
+  });
 
   @override
   State<ProjectsScreen> createState() => _ProjectsScreenState();
@@ -46,6 +63,15 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   // Stores what the user types into the search box.
   String searchText = '';
+
+  bool get _isManager {
+    final role = widget.role.trim().toLowerCase();
+    return role == 'manager' ||
+        role == 'projectmanager' ||
+        role == 'project manager';
+  }
+
+  String get _screenTitle => _isManager ? 'Projects' : 'My Projects';
 
   // ============================================================
   // INITIAL LOAD
@@ -154,9 +180,12 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         backgroundColor: black,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
-          'My Projects',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _screenTitle,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           IconButton(

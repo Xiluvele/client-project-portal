@@ -2,7 +2,24 @@ import 'package:flutter/material.dart';
 import 'projects/projects_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  final String userId;
+  final String name;
+  final String email;
+  final String role;
+  final String clientId;
+  final String memberId;
+  final String title;
+
+  const DashboardScreen({
+    super.key,
+    required this.userId,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.clientId,
+    required this.memberId,
+    required this.title,
+  });
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -14,6 +31,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const Color cardColor = Color(0xFF1A1A1A);
 
   int _selectedIndex = 0;
+
+  String get _displayName =>
+      widget.name.trim().isEmpty ? 'User' : widget.name.trim();
+
+  String get _roleLabel {
+    final role = widget.role.trim().toLowerCase();
+
+    switch (role) {
+      case 'manager':
+      case 'projectmanager':
+      case 'project manager':
+        return 'Project Manager';
+      case 'administrator':
+      case 'admin':
+        return 'Administrator';
+      case 'developer':
+        return 'Developer';
+      case 'client':
+        return 'Client';
+      default:
+        return widget.title.trim().isNotEmpty
+            ? widget.title.trim()
+            : 'Team Member';
+    }
+  }
+
+  bool get _isManager {
+    final role = widget.role.trim().toLowerCase();
+    return role == 'manager' ||
+        role == 'projectmanager' ||
+        role == 'project manager';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,21 +104,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                   const SizedBox(width: 14),
 
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Welcome back,',
                           style: TextStyle(color: Colors.grey, fontSize: 13),
                         ),
-                        SizedBox(height: 3),
+                        const SizedBox(height: 3),
                         Text(
-                          'Client',
-                          style: TextStyle(
+                          _displayName,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _roleLabel,
+                          style: const TextStyle(
+                            color: yellow,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -108,9 +167,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               const SizedBox(height: 7),
 
-              const Text(
-                'Here\'s what\'s happening with your projects.',
-                style: TextStyle(color: Colors.grey, fontSize: 14),
+              Text(
+                _isManager
+                    ? 'Here\'s what\'s happening across your client projects.'
+                    : 'Here\'s what\'s happening with your projects.',
+                style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
 
               const SizedBox(height: 28),
@@ -285,7 +346,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (index == 1) {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) => const ProjectsScreen()),
+              MaterialPageRoute(
+                builder: (context) => ProjectsScreen(
+                  userId: widget.userId,
+                  name: widget.name,
+                  email: widget.email,
+                  role: widget.role,
+                  clientId: widget.clientId,
+                  memberId: widget.memberId,
+                  title: widget.title,
+                ),
+              ),
             );
           } else {
             setState(() {

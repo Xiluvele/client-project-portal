@@ -129,7 +129,17 @@ class _LoginScreenState extends State<LoginScreen> {
         // Go to Dashboard only after successful login.
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+          MaterialPageRoute(
+            builder: (context) => DashboardScreen(
+              userId: userId,
+              name: name,
+              email: email,
+              role: role,
+              clientId: clientId,
+              memberId: memberId,
+              title: title,
+            ),
+          ),
         );
 
         return;
