@@ -46,6 +46,9 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
             entity.Property(item => item.ClientId).HasMaxLength(40);
             entity.Property(item => item.MemberId).HasMaxLength(40);
             entity.Property(item => item.Title).HasMaxLength(200);
+            entity.Property(item => item.Phone).HasMaxLength(40);
+            entity.Property(item => item.ActivationCodeHash).HasMaxLength(500);
+            entity.Property(item => item.Activated).HasDefaultValue(true);
             entity.HasIndex(item => item.Email).IsUnique();
             entity.HasOne(item => item.Client)
                 .WithMany(item => item.Users)

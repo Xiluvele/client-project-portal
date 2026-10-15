@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppStateContext } from './useAppState'
 import { teamMembers, cloneSeed } from '../data/seed'
 import { createId } from '../lib/format'
+import { activateRemote, createPendingAccount } from '../lib/accounts'
 import { emailSignInCode } from '../lib/mailCode'
 import { assessOtp, createOtpChallenge } from '../lib/otp'
 import { roleLabel } from '../lib/roles'
@@ -697,6 +698,37 @@ export function AppStateProvider({ children }) {
       activated: false,
     }
     if (role === 'developer') next.memberId = next.id
+    const remote = await createPendingAccount({
+      name: next.name,
+      email: normalised,
+      role,
+      phone: cleanPhone,
+      company: company?.trim() ?? '',
+      link: `${window.location.origin}/activate`,
+    })
+    if (!remote.ok && !remote.offline) return { ok: false, message: remote.message }
+
+    if (remote.ok) {
+      next.id = remote.user.id
+      next.clientId = remote.user.clientId
+      next.memberId = remote.user.memberId
+      next.title = remote.user.title || next.title
+      next.signInCodeExpires = Date.now() + 24 * 60 * 60 * 1000
+      setUsers((current) => [...current, next])
+      addAudit({
+        type: 'user_added',
+        category: 'accounts',
+        target: next.name,
+        detail: [['Role', '', roleLabel(role)], ['Account', '', 'Waiting for a password']],
+      })
+      return {
+        ok: true,
+        emailed: remote.emailed,
+        previewCode: remote.previewCode,
+        message: remote.emailed ? `An activation email was sent to ${normalised}.` : remote.message,
+      }
+    }
+
     const challenge = createOtpChallenge({ purpose: 'welcome', userId: next.id, email: normalised })
     next.signInCode = challenge.code
     next.signInCodeExpires = Date.now() + 24 * 60 * 60 * 1000
@@ -719,15 +751,52 @@ export function AppStateProvider({ children }) {
       emailed: delivery.sent,
       previewCode: delivery.sent ? null : challenge.code,
       message: delivery.sent
-        ? `An activation email was sent to ${normalised}.`
-        : delivery.message,
+        ? `An activation email was sent to ${normalised}. The API is not running, so this account is only on this browser.`
+        : `${delivery.message} The API is not running, so this account is only on this browser.`,
     }
   }
 
-  const activateAccount = ({ email, code, password }) => {
+  const rememberActivatedUser = (ready) => {
+    setUsers((current) => {
+      const index = current.findIndex((item) => item.id === ready.id || item.email.toLowerCase() === ready.email.toLowerCase())
+      if (index === -1) return [...current, ready]
+      return current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...ready } : item))
+    })
+  }
+
+  const activateAccount = async ({ email, code, password }) => {
     const normalised = String(email ?? '').trim().toLowerCase()
+    const remote = await activateRemote({ email: normalised, code, password })
+    if (remote.ok) {
+      const ready = {
+        id: remote.user.id,
+        name: remote.user.name,
+        email: remote.user.email,
+        password,
+        role: remote.user.role,
+        clientId: remote.user.clientId ?? null,
+        memberId: remote.user.memberId ?? null,
+        phone: remote.user.phone || '',
+        title: remote.user.title || roleLabel(remote.user.role),
+        active: true,
+        activated: true,
+      }
+      rememberActivatedUser(ready)
+      addAudit({ actor: ready.name, type: 'account_ready', category: 'accounts', target: ready.email })
+      persist(ready)
+      return { ok: true, user: publicUser(ready) }
+    }
+    if (!remote.offline && !remote.notFound) return { ok: false, message: remote.message }
+
     const match = users.find((item) => item.email.toLowerCase() === normalised)
-    if (!match) return { ok: false, message: 'No account was found for that email. Add the person again in Team & Access, then use the new code from the latest email.' }
+    if (!match) {
+      return {
+        ok: false,
+        message: remote.notFound
+          ? remote.message
+          : 'The API is not running, so this email cannot be checked on the shared database.',
+      }
+    }
     if (match.active === false) return { ok: false, message: 'This account has been deactivated. Contact an administrator.' }
     if (match.activated !== false) return { ok: false, message: 'This account already has a password. Sign in instead.' }
     if (!password || password.length < 8) return { ok: false, message: 'Use at least 8 characters for the password.' }

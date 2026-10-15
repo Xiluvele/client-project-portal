@@ -1,4 +1,6 @@
+using System.Security.Cryptography;
 using LethaboPortal.Api.Data;
+using LethaboPortal.Api.Domain;
 using LethaboPortal.Api.Security;
 using Microsoft.EntityFrameworkCore;
 
@@ -401,6 +403,20 @@ app.MapPost("/api/auth/login", async (
     }
 
 
+    if (!user.Activated)
+    {
+        return Results.Json(
+            new
+            {
+                message =
+                    "This account is not active yet. Open Activate account and choose a password."
+            },
+            statusCode:
+                StatusCodes.Status403Forbidden
+        );
+    }
+
+
     // Do not allow locked accounts to sign in.
     if (user.Locked)
     {
@@ -496,6 +512,174 @@ app.MapPost("/api/auth/email-code", async (
 });
 
 
+// ------------------------------------------------------------
+// POST: /api/accounts
+// ------------------------------------------------------------
+// Saves a new person in the shared database and emails an
+// activation code. The account cannot sign in until they
+// choose a password.
+app.MapPost("/api/accounts", async (
+    CreateAccountRequest request,
+    PortalDbContext db,
+    PortalMailer mailer,
+    CancellationToken cancellationToken) =>
+{
+    var name = request.Name?.Trim() ?? "";
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    var role = request.Role?.Trim().ToLowerInvariant() ?? "";
+    var roles = new[] { "administrator", "manager", "developer", "client" };
+    if (name.Length < 2 || !email.Contains('@') || !roles.Contains(role))
+    {
+        return Results.BadRequest(new { ok = false, message = "Name, a valid email, and a role are required." });
+    }
+
+    var company = request.Company?.Trim() ?? "";
+    if (role == "client" && company.Length == 0)
+    {
+        return Results.BadRequest(new { ok = false, message = "A client account needs a company name." });
+    }
+
+    var taken = await db.Users.AnyAsync(item => item.Email.ToLower() == email, cancellationToken);
+    if (taken)
+    {
+        return Results.Json(new { ok = false, message = "Another user already has this email." }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    string? clientId = null;
+    if (role == "client")
+    {
+        clientId = NewId("client");
+        db.Clients.Add(new ClientAccount
+        {
+            Id = clientId,
+            Name = company,
+            Contact = name,
+            Email = email,
+        });
+    }
+
+    var userId = NewId("user");
+    var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+    var user = new PortalUser
+    {
+        Id = userId,
+        Name = name,
+        Email = email,
+        PasswordHash = "",
+        Role = role,
+        ClientId = clientId,
+        MemberId = role == "developer" ? userId : null,
+        Title = role == "client" ? company : RoleTitle(role),
+        Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
+        Active = true,
+        Activated = false,
+        ActivationCodeHash = PasswordHasher.Hash(code),
+        ActivationExpires = DateTime.UtcNow.AddHours(24),
+        ActivationAttempts = 0,
+    };
+    db.Users.Add(user);
+    await db.SaveChangesAsync(cancellationToken);
+
+    var emailed = false;
+    var message = "";
+    if (mailer.IsConfigured)
+    {
+        try
+        {
+            await mailer.SendCodeAsync(email, name, code, "welcome", request.Link, cancellationToken);
+            emailed = true;
+        }
+        catch (Exception)
+        {
+            message = "The account was saved, but Gmail did not send the code.";
+        }
+    }
+    else
+    {
+        message = "Gmail is not connected, so the code was not emailed.";
+    }
+
+    return Results.Ok(new
+    {
+        ok = true,
+        emailed,
+        previewCode = emailed ? null : code,
+        message,
+        user = new { user.Id, user.Name, user.Email, user.Role, user.ClientId, user.MemberId, user.Title, user.Phone }
+    });
+});
+
+
+// ------------------------------------------------------------
+// POST: /api/accounts/activate
+// ------------------------------------------------------------
+app.MapPost("/api/accounts/activate", async (
+    ActivateAccountRequest request,
+    PortalDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    var code = request.Code?.Trim() ?? "";
+    var password = request.Password ?? "";
+    if (!email.Contains('@') || code.Length != 6 || password.Length < 8)
+    {
+        return Results.BadRequest(new { ok = false, message = "Enter the email, the 6-digit code, and a password of at least 8 characters." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
+    if (user == null)
+    {
+        return Results.Json(
+            new { ok = false, message = "No account was found for that email. Ask an administrator to add it again, then use the new email." },
+            statusCode: StatusCodes.Status404NotFound);
+    }
+
+    if (!user.Active)
+    {
+        return Results.Json(new { ok = false, message = "This account has been deactivated. Contact an administrator." }, statusCode: StatusCodes.Status403Forbidden);
+    }
+
+    if (user.Activated)
+    {
+        return Results.Json(new { ok = false, message = "This account already has a password. Sign in instead." }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    if (user.ActivationExpires is null || user.ActivationExpires < DateTime.UtcNow || string.IsNullOrWhiteSpace(user.ActivationCodeHash))
+    {
+        return Results.Json(new { ok = false, message = "That code has expired. Ask an administrator to add the account again." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!PasswordHasher.Verify(code, user.ActivationCodeHash))
+    {
+        user.ActivationAttempts += 1;
+        if (user.ActivationAttempts >= 3)
+        {
+            user.ActivationCodeHash = null;
+            user.ActivationExpires = null;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return Results.Json(
+            new { ok = false, message = user.ActivationCodeHash == null ? "Too many incorrect codes. Ask an administrator to add the account again." : "That code does not match the email. Try again." },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    user.PasswordHash = PasswordHasher.Hash(password);
+    user.Activated = true;
+    user.ActivationCodeHash = null;
+    user.ActivationExpires = null;
+    user.ActivationAttempts = 0;
+    user.FailedAttempts = 0;
+    user.Locked = false;
+    await db.SaveChangesAsync(cancellationToken);
+
+    return Results.Ok(new
+    {
+        ok = true,
+        user = new { user.Id, user.Name, user.Email, user.Role, user.ClientId, user.MemberId, user.Title, user.Phone }
+    });
+});
+
+
 // ============================================================
 // DATABASE MIGRATIONS AND SEEDING
 // ============================================================
@@ -524,6 +708,15 @@ await using (var scope =
 
 app.Run();
 
+static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..10]}";
+
+static string RoleTitle(string role) => role switch
+{
+    "administrator" => "Administrator",
+    "manager" => "Project Manager",
+    "developer" => "Developer",
+    _ => "Client",
+};
 
 // ============================================================
 // REQUEST MODELS
@@ -578,4 +771,19 @@ public record EmailCodeRequest(
     string Code,
     string? Purpose,
     string? Link
+);
+
+public record CreateAccountRequest(
+    string Name,
+    string Email,
+    string Role,
+    string? Phone,
+    string? Company,
+    string? Link
+);
+
+public record ActivateAccountRequest(
+    string Email,
+    string Code,
+    string Password
 );

@@ -21,7 +21,12 @@ public class PortalUser
     public ClientAccount? Client { get; set; }
     public string? MemberId { get; set; }
     public string Title { get; set; } = "";
+    public string? Phone { get; set; }
     public bool Active { get; set; } = true;
+    public bool Activated { get; set; } = true;
+    public string? ActivationCodeHash { get; set; }
+    public DateTime? ActivationExpires { get; set; }
+    public int ActivationAttempts { get; set; }
     public int FailedAttempts { get; set; }
     public bool Locked { get; set; }
 }
