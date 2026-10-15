@@ -14,7 +14,7 @@ export function RegisterPage() {
   const [error, setError] = useState('')
   const [otp, setOtp] = useState(null)
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     const password = data.get('password')
@@ -27,7 +27,7 @@ export function RegisterPage() {
       setError('The passwords do not match.')
       return
     }
-    const result = register({
+    const result = await register({
       name: data.get('name'),
       email: data.get('email'),
       password,
@@ -53,8 +53,8 @@ export function RegisterPage() {
     navigate(homeFor(result.user.role))
   }
 
-  const resend = () => {
-    const result = resendOtp()
+  const resend = async () => {
+    const result = await resendOtp()
     if (!result.ok) {
       setError(result.message)
       return result

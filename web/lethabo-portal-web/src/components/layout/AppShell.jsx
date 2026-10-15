@@ -12,7 +12,6 @@ const TEAM_LINKS = [
   { to: '/team/invoices', label: 'Invoices', icon: 'invoices' },
   { to: '/team/notifications', label: 'Notifications', icon: 'bell' },
   { to: '/team/members', label: 'Team', icon: 'team' },
-  { to: '/team/settings', label: 'Settings', icon: 'settings' },
 ]
 
 const CLIENT_LINKS = [

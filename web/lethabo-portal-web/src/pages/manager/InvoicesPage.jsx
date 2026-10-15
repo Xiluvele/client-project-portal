@@ -46,14 +46,13 @@ const BellIcon = () => (
 )
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
-const blankLine = () => ({ id: createId('draft'), description: '', qty: '1', amount: '' })
 
 const freshForm = (preset, clients) => ({
   clientId: preset?.clientId || clients[0]?.id || '',
   projectId: preset?.id || '',
   issuedAt: todayISO(),
   dueAt: addDaysISO(todayISO(), 14),
-  items: [blankLine()],
+  amount: '',
 })
 
 export function InvoicesPage() {
@@ -74,13 +73,11 @@ export function InvoicesPage() {
   const [notice, setNotice] = useState('')
 
   const clientProjects = projects.filter((project) => project.clientId === form.clientId)
-  const total = form.items.reduce((sum, item) => sum + (Number(item.qty) || 1) * (Number(item.amount) || 0), 0)
+  const drafts = invoices.filter((invoice) => effectiveStatus(invoice) === 'draft')
   const viewed = viewing ? invoices.find((invoice) => invoice.id === viewing) : null
   const viewedState = viewed ? effectiveStatus(viewed) : ''
 
   const setField = (patch) => setForm((current) => ({ ...current, ...patch }))
-  const updateLine = (id, patch) =>
-    setForm((current) => ({ ...current, items: current.items.map((item) => (item.id === id ? { ...item, ...patch } : item)) }))
 
   const openGenerate = () => {
     setForm(freshForm(null, clients))
@@ -95,7 +92,7 @@ export function InvoicesPage() {
       projectId: invoice.projectId,
       issuedAt: invoice.issuedAt || todayISO(),
       dueAt: invoice.dueAt || addDaysISO(todayISO(), 14),
-      items: invoice.items.map((item) => ({ ...item, qty: String(item.qty ?? 1), amount: String(item.amount) })),
+      amount: String(invoice.items.reduce((sum, item) => sum + (Number(item.qty) || 1) * (Number(item.amount) || 0), 0) || ''),
     })
     setEditingId(invoice.id)
     setError('')
@@ -109,12 +106,11 @@ export function InvoicesPage() {
     setConfirming('')
   }
 
-  const submit = (send) => {
-    const cleaned = form.items
-      .filter((item) => item.description.trim() && Number(item.amount) > 0)
-      .map((item) => ({ ...item, description: item.description.trim(), qty: Number(item.qty) || 1, amount: Number(item.amount) }))
-    if (!form.clientId || !form.projectId || cleaned.length === 0) {
-      setError('Choose a client, a project, and at least one line item with an amount.')
+  const submit = () => {
+    const project = projects.find((item) => item.id === form.projectId)
+    const amount = Number(form.amount)
+    if (!form.clientId || !form.projectId || !(amount > 0)) {
+      setError('Choose a client, one of that client’s projects, and an amount.')
       return
     }
     if (!form.issuedAt || !form.dueAt || form.dueAt < form.issuedAt) {
@@ -126,18 +122,18 @@ export function InvoicesPage() {
       projectId: form.projectId,
       issuedAt: form.issuedAt,
       dueAt: form.dueAt,
-      items: cleaned,
+      items: [{ id: createId('line'), description: project?.name || 'Project invoice', qty: 1, amount }],
     }
     if (editingId) {
-      const result = updateInvoice(editingId, { ...payload, title: cleaned[0].description }, send)
+      const result = updateInvoice(editingId, { ...payload, title: project?.name || 'Project invoice' }, true)
       if (!result.ok) {
         setError(result.message)
         return
       }
-      setNotice(send ? `#${result.invoice.number} was sent to the client.` : `#${result.invoice.number} was saved as a draft.`)
+      setNotice(`#${result.invoice.number} was sent to the client.`)
     } else {
-      const invoice = generateInvoice({ ...payload, send })
-      setNotice(send ? `#${invoice.number} was generated and sent to the client.` : `#${invoice.number} was saved as a draft.`)
+      const invoice = generateInvoice({ ...payload, send: true })
+      setNotice(`#${invoice.number} was generated and sent to the client.`)
     }
     setOpen(false)
     setEditingId(null)
@@ -178,8 +174,25 @@ export function InvoicesPage() {
         <StatCard label="TOTAL OUTSTANDING" value={formatRand(metrics.outstanding)} hint={`${plural(metrics.outstandingCount, 'invoice')} sent`} />
         <StatCard label="PAID THIS MONTH" value={formatRand(metrics.paidThisMonth)} hint={plural(metrics.paidThisMonthCount, 'invoice')} hintTone="green" />
         <StatCard label="OVERDUE" value={formatRand(metrics.overdue)} hint={metrics.overdueCount ? 'Needs a reminder' : 'None overdue'} hintTone={metrics.overdueCount ? 'danger' : 'green'} />
-        <StatCard label="DRAFTS" value={formatRand(metrics.drafts)} hint={`${metrics.draftCount} not sent yet`} />
+        <StatCard dark label="DRAFTS" value={formatRand(metrics.drafts)} hint={`${metrics.draftCount} not sent yet`} />
       </div>
+
+      {drafts.length ? (
+        <div className="draft-grid">
+          {drafts.map((invoice) => {
+            const client = clientById(clients, invoice.clientId)
+            const project = projectById(projects, invoice.projectId)
+            return (
+              <button key={invoice.id} type="button" className="draft-card" onClick={() => setViewing(invoice.id)}>
+                <span>Draft</span>
+                <strong>#{invoice.number}</strong>
+                <small>{client?.name} · {project?.name}</small>
+                <b>{formatRand(invoiceTotal(invoice))}</b>
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       <Card className="card__pad">
         {notice ? <p className="notice" role="status">{notice}</p> : null}
@@ -271,16 +284,8 @@ export function InvoicesPage() {
               <div><dt>Invoice date</dt><dd>{viewed.issuedLabel}</dd></div>
               <div><dt>Due date</dt><dd>{viewed.dueLabel}</dd></div>
               <div><dt>Status</dt><dd><StatusBadge status={viewedState} group="invoice" /></dd></div>
+              <div><dt>Amount</dt><dd>{formatRand(invoiceTotal(viewed))}</dd></div>
             </dl>
-            <div>
-              {viewed.items.map((item) => (
-                <div className="detail-line" key={item.id}>
-                  <span>{item.description}{Number(item.qty ?? 1) > 1 ? ` × ${item.qty}` : ''}</span>
-                  <span>{formatRand(Number(item.qty ?? 1) * Number(item.amount))}</span>
-                </div>
-              ))}
-              <div className="total-row"><span>Total</span><span>{formatRand(invoiceTotal(viewed))}</span></div>
-            </div>
 
             {confirming ? (
               <>
@@ -327,7 +332,7 @@ export function InvoicesPage() {
             {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
           </SelectField>
           <SelectField label="Project" value={form.projectId} onChange={(event) => setField({ projectId: event.target.value })} required>
-            <option value="">Select a project</option>
+            <option value="">{clientProjects.length ? 'Select a project' : 'This client has no projects'}</option>
             {clientProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </SelectField>
           <div className="field-row">
@@ -343,27 +348,9 @@ export function InvoicesPage() {
             />
             <TextField label="Due date" type="date" value={form.dueAt} onChange={(event) => setField({ dueAt: event.target.value })} required />
           </div>
-          <div className="field">
-            <span className="field__label">Line items</span>
-            <div className="invoice-lines-head">
-              <span>Description</span><span>Qty</span><span>Amount (each)</span><span />
-            </div>
-            {form.items.map((item, index) => (
-              <div className="invoice-line" key={item.id}>
-                <input className="field__control" aria-label={`Description, line ${index + 1}`} placeholder="Description" value={item.description} onChange={(event) => updateLine(item.id, { description: event.target.value })} />
-                <input className="field__control" aria-label={`Quantity, line ${index + 1}`} type="number" min="1" value={item.qty} onChange={(event) => updateLine(item.id, { qty: event.target.value })} />
-                <input className="field__control" aria-label={`Amount, line ${index + 1}`} type="number" min="0" placeholder="0" value={item.amount} onChange={(event) => updateLine(item.id, { amount: event.target.value })} />
-                {form.items.length > 1 ? (
-                  <button className="linkish" type="button" aria-label={`Remove line ${index + 1}`} onClick={() => setForm((current) => ({ ...current, items: current.items.filter((row) => row.id !== item.id) }))}>Remove</button>
-                ) : <span />}
-              </div>
-            ))}
-            <button className="linkish" type="button" onClick={() => setForm((current) => ({ ...current, items: [...current.items, blankLine()] }))}>+ Add line</button>
-          </div>
-          <div className="total-row"><span>Total</span><span>{formatRand(total)}</span></div>
+          <TextField label="Amount (R)" type="number" min="0" value={form.amount} onChange={(event) => setField({ amount: event.target.value })} placeholder="0" required />
           <div className="task__actions">
-            <Button type="button" variant="secondary" onClick={() => submit(false)}>{editingId ? 'Save draft' : 'Save as draft'}</Button>
-            <Button type="button" onClick={() => submit(true)}>{editingId ? 'Send to Client' : 'Generate & Send to Client'}</Button>
+            <Button type="button" onClick={() => submit()}>{editingId ? 'Send to Client' : 'Generate & Send to Client'}</Button>
           </div>
         </form>
       </Modal>

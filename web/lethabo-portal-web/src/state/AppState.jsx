@@ -1,12 +1,31 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppStateContext } from './useAppState'
 import { teamMembers, cloneSeed } from '../data/seed'
 import { createId } from '../lib/format'
+import { emailSignInCode } from '../lib/mailCode'
 import { assessOtp, createOtpChallenge } from '../lib/otp'
 import { roleLabel } from '../lib/roles'
 import { addDaysISO, dateLabel, effectiveStatus, todayISO } from '../lib/invoiceDates'
 
 const SESSION_KEY = 'lethabo-connect-session'
+const USERS_KEY = 'lethabo-connect-users'
+const CLIENTS_KEY = 'lethabo-connect-clients'
+
+function readStored(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    const saved = JSON.parse(raw)
+    if (!Array.isArray(saved)) return fallback
+    const byId = new Map(fallback.map((item) => [item.id, item]))
+    saved.forEach((item) => {
+      if (item?.id) byId.set(item.id, { ...(byId.get(item.id) ?? {}), ...item })
+    })
+    return [...byId.values()]
+  } catch {
+    return fallback
+  }
+}
 
 function readSession() {
   try {
@@ -32,8 +51,8 @@ function publicUser(user) {
 
 export function AppStateProvider({ children }) {
   const seed = useMemo(() => cloneSeed(), [])
-  const [users, setUsers] = useState(seed.users)
-  const [clients, setClients] = useState(seed.clients)
+  const [users, setUsers] = useState(() => readStored(USERS_KEY, seed.users))
+  const [clients, setClients] = useState(() => readStored(CLIENTS_KEY, seed.clients))
   const [projects, setProjects] = useState(seed.projects)
   const [invoices, setInvoices] = useState(seed.invoices)
   const [activities, setActivities] = useState(seed.activities)
@@ -43,6 +62,14 @@ export function AppStateProvider({ children }) {
   const [session, setSession] = useState(() => readSession())
   const [otpChallenge, setOtpChallenge] = useState(null)
   const [auditLog, setAuditLog] = useState([])
+
+  useEffect(() => {
+    localStorage.setItem(USERS_KEY, JSON.stringify(users))
+  }, [users])
+
+  useEffect(() => {
+    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients))
+  }, [clients])
 
   const record = users.find((item) => item.id === session?.id) ?? null
   const user = record && record.active !== false ? record : null
@@ -66,13 +93,34 @@ export function AppStateProvider({ children }) {
       ...current,
     ])
 
-  const login = (email, password) => {
+  const activeSignInCode = (account) => {
+    if (!account?.signInCode || Date.now() > account.signInCodeExpires) return null
+    return {
+      purpose: 'login',
+      userId: account.id,
+      email: account.email,
+      code: account.signInCode,
+      expiresAt: account.signInCodeExpires,
+      attempts: 0,
+    }
+  }
+
+  const rememberSignInCode = (userId, challenge) => {
+    setUsers((current) => current.map((item) => (
+      item.id === userId ? { ...item, signInCode: challenge.code, signInCodeExpires: challenge.expiresAt } : item
+    )))
+  }
+
+  const login = async (email, password) => {
     const match = users.find((item) => item.email.toLowerCase() === email.trim().toLowerCase())
     if (!match || match.active === false) {
       addAudit({ actor: 'Unknown', type: 'signin_failed', category: 'signins', target: email.trim() })
       return { ok: false, message: match?.active === false
         ? 'This account has been deactivated. Contact an administrator.'
         : 'Email or password does not match our records.' }
+    }
+    if (match.activated === false) {
+      return { ok: false, message: 'This account is not active yet. Open Activate account, enter the code from the email, and choose a password.' }
     }
     if (match.locked) {
       return { ok: false, message: 'This account is temporarily locked after repeated failed sign-ins.' }
@@ -90,14 +138,24 @@ export function AppStateProvider({ children }) {
       }
     }
     setUsers((current) => current.map((item) => (item.id === match.id ? { ...item, failedAttempts: 0, locked: false } : item)))
-    const challenge = createOtpChallenge({ purpose: 'login', userId: match.id, email: match.email })
+    const challenge = activeSignInCode(match) ?? createOtpChallenge({ purpose: 'login', userId: match.id, email: match.email })
     setOtpChallenge(challenge)
-    return { ok: true, step: 'otp', email: match.email, previewCode: challenge.code }
+    rememberSignInCode(match.id, challenge)
+    const delivery = await emailSignInCode({
+      email: match.email,
+      name: match.name,
+      code: challenge.code,
+      purpose: 'login',
+    })
+    return { ok: true, step: 'otp', email: match.email, previewCode: delivery.sent ? null : challenge.code, emailed: delivery.sent, message: delivery.message }
   }
 
-  const logout = () => persist(null)
+  const logout = () => {
+    if (user) addAudit({ type: 'signout', category: 'signins', target: user.email })
+    persist(null)
+  }
 
-  const register = ({ name, email, password, role, company, title }) => {
+  const register = async ({ name, email, password, role, company, title }) => {
     const normalised = String(email ?? '').trim().toLowerCase()
     if (!name?.trim()) return { ok: false, message: 'Enter your full name.' }
     if (!normalised.includes('@')) return { ok: false, message: 'Enter a valid email address.' }
@@ -121,10 +179,16 @@ export function AppStateProvider({ children }) {
       },
     })
     setOtpChallenge(challenge)
-    return { ok: true, step: 'otp', email: normalised, previewCode: challenge.code }
+    const delivery = await emailSignInCode({
+      email: normalised,
+      name: name.trim(),
+      code: challenge.code,
+      purpose: 'register',
+    })
+    return { ok: true, step: 'otp', email: normalised, previewCode: delivery.sent ? null : challenge.code, emailed: delivery.sent, message: delivery.message }
   }
 
-  const resendOtp = () => {
+  const resendOtp = async () => {
     if (!otpChallenge) return { ok: false, message: 'Start again to request a code.' }
     const challenge = createOtpChallenge({
       purpose: otpChallenge.purpose,
@@ -133,7 +197,14 @@ export function AppStateProvider({ children }) {
       draft: otpChallenge.draft,
     })
     setOtpChallenge(challenge)
-    return { ok: true, previewCode: challenge.code }
+    if (challenge.userId) rememberSignInCode(challenge.userId, challenge)
+    const delivery = await emailSignInCode({
+      email: challenge.email,
+      name: users.find((item) => item.id === challenge.userId)?.name ?? challenge.draft?.name ?? '',
+      code: challenge.code,
+      purpose: challenge.purpose,
+    })
+    return { ok: true, previewCode: delivery.sent ? null : challenge.code, emailed: delivery.sent, message: delivery.message }
   }
 
   const cancelOtp = () => setOtpChallenge(null)
@@ -208,12 +279,14 @@ export function AppStateProvider({ children }) {
   const clientUserIds = (clientId) => users.filter((item) => item.role === 'client' && item.clientId === clientId && item.active !== false).map((item) => item.id)
   const managerIds = () => users.filter((item) => item.role === 'manager' && item.active !== false).map((item) => item.id)
 
-  const createProject = ({ clientId, name, service, dueLabel, memberIds, description }) => {
+  const createProject = ({ clientId, name, service, dueLabel, memberIds, description, brief }) => {
     const errors = {}
     if (!clientId) errors.clientId = 'Select a client. The project cannot be saved without one.'
     if (!name?.trim()) errors.name = 'Enter a project title.'
     if (!description?.trim()) errors.description = 'Enter a description.'
     if (!dueLabel?.trim()) errors.dueLabel = 'Enter a due date.'
+    if (!service) errors.service = 'Select a service offered by Lethabo M Solutions.'
+    if (!memberIds?.length) errors.memberIds = 'Select an available developer.'
     if (Object.keys(errors).length) return { ok: false, errors }
 
     const project = {
@@ -231,7 +304,17 @@ export function AppStateProvider({ children }) {
       description: description.trim(),
       milestones: [],
       tasks: [],
-      files: [],
+      files: brief?.name ? [{
+        id: createId('file'),
+        name: brief.name,
+        kind: brief.kind || 'File',
+        description: 'Project brief',
+        previewUrl: brief.previewUrl || '',
+        version: 1,
+        uploadedBy: user?.name?.split(' ')[0] ?? 'Team',
+        createdAt: new Date().toISOString(),
+        approval: 'pending',
+      }] : [],
       comments: [],
     }
     setProjects((current) => [project, ...current])
@@ -328,7 +411,7 @@ export function AppStateProvider({ children }) {
     })
   }, [])
 
-  const addFile = (projectId, { name, kind, description }) => {
+  const addFile = (projectId, { name, kind, description, previewUrl }) => {
     const project = projects.find((item) => item.id === projectId)
     const cleanName = name.trim()
     const existing = project?.files.filter((file) => file.name.toLowerCase() === cleanName.toLowerCase()) ?? []
@@ -338,6 +421,7 @@ export function AppStateProvider({ children }) {
       name: cleanName,
       kind,
       description: (description || '').trim(),
+      previewUrl: previewUrl || '',
       version: existing.length ? version : 1,
       uploadedBy: user?.name?.split(' ')[0] ?? 'Team',
       createdAt: new Date().toISOString(),
@@ -562,7 +646,7 @@ export function AppStateProvider({ children }) {
     })
   }
 
-  const saveAccount = ({ id, name, email, role, phone, company, projectId }) => {
+  const saveAccount = async ({ id, name, email, role, phone, company }) => {
     const normalised = String(email ?? '').trim().toLowerCase()
     if (users.some((item) => item.email.toLowerCase() === normalised && item.id !== id)) {
       return { ok: false, message: 'An account with that email already exists.' }
@@ -603,30 +687,70 @@ export function AppStateProvider({ children }) {
       id: createId('user'),
       name: name.trim(),
       email: normalised,
-      password: 'connect123',
+      password: '',
       role,
       clientId,
       memberId: null,
       phone: cleanPhone,
       title: role === 'client' ? company.trim() : roleLabel(role),
       active: true,
+      activated: false,
     }
     if (role === 'developer') next.memberId = next.id
+    const challenge = createOtpChallenge({ purpose: 'welcome', userId: next.id, email: normalised })
+    next.signInCode = challenge.code
+    next.signInCodeExpires = Date.now() + 24 * 60 * 60 * 1000
     setUsers((current) => [...current, next])
-
-    const project = projectId ? projects.find((item) => item.id === projectId) : null
-    if (project && next.memberId) {
-      setProjects((current) => current.map((item) => (
-        item.id === project.id ? { ...item, memberIds: [...new Set([...(item.memberIds ?? []), next.memberId])] } : item
-      )))
-    }
     addAudit({
       type: 'user_added',
       category: 'accounts',
       target: next.name,
-      detail: [['Role', '', roleLabel(role)], ...(project ? [['Project', '', project.name]] : [])],
+      detail: [['Role', '', roleLabel(role)], ['Account', '', 'Waiting for a password']],
     })
-    return { ok: true }
+    const delivery = await emailSignInCode({
+      email: normalised,
+      name: next.name,
+      code: challenge.code,
+      purpose: 'welcome',
+      link: `${window.location.origin}/activate`,
+    })
+    return {
+      ok: true,
+      emailed: delivery.sent,
+      previewCode: delivery.sent ? null : challenge.code,
+      message: delivery.sent
+        ? `An activation email was sent to ${normalised}.`
+        : delivery.message,
+    }
+  }
+
+  const activateAccount = ({ email, code, password }) => {
+    const normalised = String(email ?? '').trim().toLowerCase()
+    const match = users.find((item) => item.email.toLowerCase() === normalised)
+    if (!match) return { ok: false, message: 'No account was found for that email. Add the person again in Team & Access, then use the new code from the latest email.' }
+    if (match.active === false) return { ok: false, message: 'This account has been deactivated. Contact an administrator.' }
+    if (match.activated !== false) return { ok: false, message: 'This account already has a password. Sign in instead.' }
+    if (!password || password.length < 8) return { ok: false, message: 'Use at least 8 characters for the password.' }
+
+    const result = assessOtp({
+      code: match.signInCode,
+      expiresAt: match.signInCodeExpires,
+      attempts: match.activationAttempts ?? 0,
+    }, code)
+    if (!result.ok) {
+      if (result.clear) {
+        setUsers((current) => current.map((item) => (item.id === match.id ? { ...item, signInCode: null, signInCodeExpires: null } : item)))
+      } else if (result.attempts) {
+        setUsers((current) => current.map((item) => (item.id === match.id ? { ...item, activationAttempts: result.attempts } : item)))
+      }
+      return { ok: false, message: result.message }
+    }
+
+    const ready = { ...match, password, activated: true, signInCode: null, signInCodeExpires: null, activationAttempts: 0, failedAttempts: 0, locked: false }
+    setUsers((current) => current.map((item) => (item.id === match.id ? ready : item)))
+    addAudit({ actor: match.name, type: 'account_ready', category: 'accounts', target: match.email })
+    persist(ready)
+    return { ok: true, user: publicUser(ready) }
   }
 
   const setAccountActive = (userId, active) => {
@@ -691,6 +815,7 @@ export function AppStateProvider({ children }) {
     submitChangeRequest,
     decideChangeRequest,
     saveAccount,
+    activateAccount,
     setAccountActive,
     markNotificationRead,
   }

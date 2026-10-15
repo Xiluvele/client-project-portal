@@ -7,6 +7,7 @@ import { homeFor } from '../lib/roles'
 import { useAppState } from '../state/useAppState'
 
 const PROTOTYPE_ROLES = [
+  { id: 'nompumelelo', label: 'Administrator — Nompumelelo', email: 'nompumelelononhlanhla18@gmail.com', password: 'Connect@123' },
   { id: 'admin', label: 'Administrator', email: 'admin@lethabom.co.za' },
   { id: 'manager', label: 'Project Manager', email: 'naledi@lethabom.co.za' },
   { id: 'developer', label: 'Developer — Sipho Dlamini', email: 'sipho@lethabom.co.za' },
@@ -19,9 +20,9 @@ const DEMO_PASSWORD = 'connect123'
 export function LoginPage() {
   const { login, verifyOtp, resendOtp, cancelOtp } = useAppState()
   const navigate = useNavigate()
-  const [roleId, setRoleId] = useState('manager')
-  const [email, setEmail] = useState('naledi@lethabom.co.za')
-  const [password, setPassword] = useState(DEMO_PASSWORD)
+  const [roleId, setRoleId] = useState('nompumelelo')
+  const [email, setEmail] = useState('nompumelelononhlanhla18@gmail.com')
+  const [password, setPassword] = useState('Connect@123')
   const [error, setError] = useState('')
   const [otp, setOtp] = useState(null)
 
@@ -29,13 +30,13 @@ export function LoginPage() {
     const role = PROTOTYPE_ROLES.find((item) => item.id === nextRoleId) ?? PROTOTYPE_ROLES[0]
     setRoleId(role.id)
     setEmail(role.email)
-    setPassword(DEMO_PASSWORD)
+    setPassword(role.password ?? DEMO_PASSWORD)
     setError('')
   }
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
-    const result = login(email, password)
+    const result = await login(email, password)
     if (!result.ok) {
       setError(result.message)
       return
@@ -54,8 +55,8 @@ export function LoginPage() {
     navigate(homeFor(result.user.role))
   }
 
-  const resend = () => {
-    const result = resendOtp()
+  const resend = async () => {
+    const result = await resendOtp()
     if (!result.ok) {
       setError(result.message)
       return result
@@ -130,6 +131,8 @@ export function LoginPage() {
           <Button type="submit" block>Sign in</Button>
           <p className="signin__alt">
             New to the portal? <Link to="/register" onClick={cancelOtp}>Create an account</Link>
+            <span> · </span>
+            <Link to="/activate" onClick={cancelOtp}>Activate account</Link>
           </p>
         </form>
         )}

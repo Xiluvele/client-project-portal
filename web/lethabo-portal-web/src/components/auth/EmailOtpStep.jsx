@@ -13,11 +13,11 @@ export function EmailOtpStep({ email, previewCode, error, onSubmit, onResend, on
     onSubmit(code)
   }
 
-  const resend = () => {
-    const result = onResend()
+  const resend = async () => {
+    const result = await onResend()
     if (!result?.ok) return
     setCode('')
-    setNotice('A new code is in the demo inbox.')
+    setNotice(result.previewCode ? 'Email is not connected, so the new code is shown below.' : 'A new code was emailed.')
   }
 
   return (
@@ -27,10 +27,14 @@ export function EmailOtpStep({ email, previewCode, error, onSubmit, onResend, on
       <p className="signin__lead">Enter the 6-digit code sent to {email}.</p>
       {error ? <div className="form-error">{error}</div> : null}
       {notice ? <p className="notice">{notice}</p> : null}
-      <div className="otp-mail">
-        <span>Demo inbox. The API will send this email. Until then, use the code below.</span>
-        <strong>{previewCode}</strong>
-      </div>
+      {previewCode ? (
+        <div className="otp-mail">
+          <span>Gmail is not connected yet, so the code is shown here instead of being emailed.</span>
+          <strong>{previewCode}</strong>
+        </div>
+      ) : (
+        <p className="quiet">The code was sent to that inbox. It expires in 10 minutes.</p>
+      )}
       <TextField
         label="Email code"
         name="otp"

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { projectProgress } from '../../domain/catalog'
+import { readPreview } from '../../lib/filePreview'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { SelectField, TextField } from '../../components/ui/Fields'
+import { TextField } from '../../components/ui/Fields'
 import { Modal } from '../../components/ui/Modal'
 import { ActivityHistory } from '../../components/project/ProjectControls'
-import { CommentThread, FileList } from '../../components/project/ProjectWidgets'
+import { CommentThread, FileList, FilePreview } from '../../components/project/ProjectWidgets'
 import { useAppState } from '../../state/useAppState'
 
 export function DeveloperProjectPage() {
@@ -15,16 +16,48 @@ export function DeveloperProjectPage() {
   const { user, projects, clients, addFile } = useAppState()
   const project = projects.find((item) => item.id === projectId && (item.memberIds.includes(user?.memberId) || item.tasks.some((task) => task.assigneeId === user?.memberId)))
   const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState(null)
+  const [uploadError, setUploadError] = useState('')
 
   if (!project) {
     return <PageIntro title="Project not available" subtitle="You can only open projects you are assigned to." actions={<Link to="/developer/tasks">Back to my tasks</Link>} />
   }
 
+  const closeUpload = () => {
+    setUploading(false)
+    setPreview(null)
+    setUploadError('')
+  }
+
+  const onUploadFile = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setPreview(null)
+      return
+    }
+    try {
+      setPreview(await readPreview(file))
+      setUploadError('')
+    } catch (error) {
+      setPreview(null)
+      setUploadError(error.message)
+    }
+  }
+
   const submitFile = (event) => {
     event.preventDefault()
+    if (!preview?.name) {
+      setUploadError('Choose a document or photo first.')
+      return
+    }
     const data = new FormData(event.currentTarget)
-    addFile(project.id, { name: data.get('name'), kind: data.get('kind'), description: data.get('description') })
-    setUploading(false)
+    addFile(project.id, {
+      name: preview.name,
+      kind: preview.kind,
+      description: data.get('description'),
+      previewUrl: preview.previewUrl,
+    })
+    closeUpload()
   }
 
   return (
@@ -51,15 +84,20 @@ export function DeveloperProjectPage() {
       <div className="split">
         <ActivityHistory projectId={project.id} />
       </div>
-      <Modal title="Upload file" open={uploading} onClose={() => setUploading(false)}>
+      <Modal title="Upload file" open={uploading} onClose={closeUpload}>
         <form className="stack" onSubmit={submitFile}>
-          <TextField label="File name" name="name" required placeholder="Homepage_v4.fig" />
-          <TextField label="Description" name="description" placeholder="What changed in this version" />
-          <SelectField label="Type" name="kind" defaultValue="Fig">
-            <option>Fig</option>
-            <option>PDF</option>
-            <option>PNG</option>
-          </SelectField>
+          <div className="field">
+            <span className="field__label">Document or photo</span>
+            <input className="field__control" type="file" accept="image/*,.pdf,.doc,.docx" onChange={onUploadFile} />
+            {uploadError ? <span className="field__error">{uploadError}</span> : null}
+            {preview ? (
+              <div className="upload-preview">
+                <FilePreview file={preview} large />
+                <small>{preview.name}</small>
+              </div>
+            ) : null}
+          </div>
+          <TextField label="Note" name="description" placeholder="What changed in this version" />
           <Button type="submit">Add to project</Button>
         </form>
       </Modal>

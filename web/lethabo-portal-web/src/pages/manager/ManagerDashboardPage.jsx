@@ -7,7 +7,8 @@ import { PageIntro } from '../../components/layout/AppShell'
 import { CreateProjectModal } from '../../components/project/CreateProjectModal'
 import { ProjectTable } from '../../components/project/ProjectWidgets'
 import { Avatar } from '../../components/ui/Avatar'
-import { firstName, formatRand, formatRelative, greetingFor } from '../../lib/format'
+import { DASHBOARD_STATUS_FILTERS } from '../../domain/catalog'
+import { cx, firstName, formatRand, formatRelative, greetingFor } from '../../lib/format'
 import { managerMetrics, projectHealth } from '../../state/metrics'
 import { useProjectFilters } from '../../state/useProjectFilters'
 import { useAppState } from '../../state/useAppState'
@@ -15,10 +16,9 @@ import { useAppState } from '../../state/useAppState'
 export function ManagerDashboardPage() {
   const { user, projects, invoices, activities, clients, members, changeRequests, deleteProject } = useAppState()
   const metrics = managerMetrics(projects, invoices, members)
-  const { query, setQuery, filtered } = useProjectFilters(projects, clients)
+  const { query, setQuery, status, setStatus, filtered } = useProjectFilters(projects, clients)
   const [creating, setCreating] = useState(false)
   const visible = filtered.slice(0, 4)
-  const unassigned = projects.flatMap((project) => project.tasks.filter((task) => !task.assigneeId).map((task) => ({ ...task, projectName: project.name })))
   const atRisk = projects.filter((project) => projectHealth(project, changeRequests) === 'at_risk').length
 
   return (
@@ -40,19 +40,18 @@ export function ManagerDashboardPage() {
         <StatCard label="UNREAD CLIENT COMMENTS" value={metrics.unreadCount} hint="Needs response" />
         <StatCard label="TEAM UTILISATION" value={`${metrics.utilisation}%`} hint={`${atRisk} at risk`} hintTone={atRisk ? 'danger' : 'green'} />
       </div>
-      {unassigned.length ? (
-        <Card>
-          <div className="section-head"><h2>Unassigned tasks</h2></div>
-          {unassigned.map((task) => (
-            <p key={task.id}><strong>{task.title}</strong> <span className="quiet">on {task.projectName} — no developer selected</span></p>
-          ))}
-        </Card>
-      ) : null}
+      <div className="filters" role="group" aria-label="Filter projects by status">
+        {DASHBOARD_STATUS_FILTERS.map((item) => (
+          <button key={item.id} type="button" className={cx('chip', status === item.id && 'is-active')} onClick={() => setStatus(item.id)}>
+            {item.label}
+          </button>
+        ))}
+      </div>
       <div className="dashboard-grid">
         <Card>
           <div className="section-head">
             <h2>Active Projects</h2>
-            <span>{projects.length} total</span>
+            <span>{filtered.length} shown</span>
           </div>
           <ProjectTable projects={visible} clients={clients} members={members} to={(id) => `/team/projects/${id}`} onDelete={deleteProject} />
         </Card>

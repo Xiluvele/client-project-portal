@@ -5,6 +5,21 @@ export const TASK_LANES = [
   { id: 'done', label: 'Done' },
 ]
 
+export const COMPANY_SERVICES = [
+  { id: 'web', label: 'Web development' },
+  { id: 'brand', label: 'Brand identity' },
+  { id: 'mobile', label: 'Mobile app' },
+  { id: 'commerce', label: 'E-commerce' },
+  { id: 'content', label: 'Content and social' },
+  { id: 'design', label: 'Graphic design' },
+]
+
+export const DASHBOARD_STATUS_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'done', label: 'Done' },
+]
+
 export const PROJECT_STATUSES = [
   { id: 'in_progress', label: 'In Progress' },
   { id: 'in_review', label: 'In Review' },

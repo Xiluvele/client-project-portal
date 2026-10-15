@@ -1,18 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { COMPANY_SERVICES } from '../../domain/catalog'
+import { readPreview } from '../../lib/filePreview'
+import { useAppState } from '../../state/useAppState'
+import { FilePreview } from './ProjectWidgets'
 import { Button } from '../ui/Button'
 import { SelectField, TextField } from '../ui/Fields'
 import { Modal } from '../ui/Modal'
-import { useAppState } from '../../state/useAppState'
 
 const EMPTY = { clientId: '', name: '', description: '', dueLabel: '', service: '' }
 
 export function CreateProjectModal({ open, onClose }) {
   const { clients, members, createProject } = useAppState()
   const navigate = useNavigate()
-  const [memberIds, setMemberIds] = useState(['nk'])
+  const [memberIds, setMemberIds] = useState([])
   const [form, setForm] = useState(EMPTY)
+  const [brief, setBrief] = useState(null)
   const [errors, setErrors] = useState({})
+  const developers = members.filter((member) => /developer/i.test(member.role))
+  const available = developers.filter((member) => !member.allocated)
 
   const setField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }))
@@ -21,17 +27,30 @@ export function CreateProjectModal({ open, onClose }) {
 
   const close = () => {
     setForm(EMPTY)
+    setBrief(null)
+    setMemberIds([])
     setErrors({})
     onClose()
   }
 
-  const toggleMember = (id) => {
-    setMemberIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]))
+  const onBrief = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setBrief(null)
+      return
+    }
+    try {
+      setBrief(await readPreview(file))
+      setErrors((current) => ({ ...current, brief: undefined }))
+    } catch (error) {
+      setBrief(null)
+      setErrors((current) => ({ ...current, brief: error.message }))
+    }
   }
 
   const submit = (event) => {
     event.preventDefault()
-    const result = createProject({ ...form, memberIds })
+    const result = createProject({ ...form, memberIds, brief })
     if (!result.ok) {
       setErrors(result.errors ?? {})
       return
@@ -43,26 +62,52 @@ export function CreateProjectModal({ open, onClose }) {
   return (
     <Modal title="New project" open={open} onClose={close}>
       <form className="stack" onSubmit={submit} noValidate>
-        {errors.form ? <div className="form-error">{errors.form}</div> : null}
         <SelectField label="Client" name="clientId" value={form.clientId} error={errors.clientId} onChange={(event) => setField('clientId', event.target.value)}>
           <option value="">Select a client</option>
           {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
         </SelectField>
         <TextField label="Project title" name="name" value={form.name} error={errors.name} onChange={(event) => setField('name', event.target.value)} placeholder="Website Rebuild" />
         <TextField label="Description" name="description" value={form.description} error={errors.description} onChange={(event) => setField('description', event.target.value)} placeholder="What this engagement covers" />
-        <TextField label="Service" name="service" value={form.service} onChange={(event) => setField('service', event.target.value)} placeholder="Web development" />
+        <SelectField label="Service" name="service" value={form.service} error={errors.service} onChange={(event) => setField('service', event.target.value)}>
+          <option value="">Select a Lethabo M Solutions service</option>
+          {COMPANY_SERVICES.map((service) => <option key={service.id} value={service.label}>{service.label}</option>)}
+        </SelectField>
         <TextField label="Due date" name="dueLabel" value={form.dueLabel} error={errors.dueLabel} onChange={(event) => setField('dueLabel', event.target.value)} placeholder="12 Oct" />
         <div className="field">
-          <span className="field__label">Team</span>
-          <div className="check-grid">
-            {members.map((member) => (
-              <label key={member.id}>
-                <input type="checkbox" checked={memberIds.includes(member.id)} onChange={() => toggleMember(member.id)} />
-                {member.shortName}
-              </label>
-            ))}
-          </div>
+          <span className="field__label">Project file</span>
+          <input className="field__control" type="file" accept="image/*,.pdf,.doc,.docx" onChange={onBrief} />
+          {errors.brief ? <span className="field__error">{errors.brief}</span> : null}
+          {brief ? (
+            <div className="upload-preview">
+              <FilePreview file={brief} large />
+              <small>{brief.name}</small>
+            </div>
+          ) : null}
         </div>
+        <fieldset className="field">
+          <legend className="field__label">Available developer</legend>
+          {available.length === 0 ? (
+            <p className="quiet">Every software developer is already allocated. Free one on the team list before assigning a project.</p>
+          ) : (
+            <div className="check-grid">
+              {available.map((member) => (
+                <label key={member.id}>
+                  <input
+                    type="radio"
+                    name="developer"
+                    checked={memberIds.includes(member.id)}
+                    onChange={() => {
+                      setMemberIds([member.id])
+                      setErrors((current) => ({ ...current, memberIds: undefined }))
+                    }}
+                  />
+                  {member.shortName}
+                </label>
+              ))}
+            </div>
+          )}
+          {errors.memberIds ? <span className="field__error">{errors.memberIds}</span> : null}
+        </fieldset>
         <Button type="submit">Create project</Button>
       </form>
     </Modal>

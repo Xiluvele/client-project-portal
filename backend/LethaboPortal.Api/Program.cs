@@ -12,6 +12,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Adds OpenAPI support.
 // This allows API documentation to be exposed during development.
 builder.Services.AddOpenApi();
+builder.Services.AddSingleton<PortalMailer>();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("portal", policy =>
+        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod());
+});
 
 
 // Register PortalDbContext with dependency injection.
@@ -68,6 +76,7 @@ if (app.Environment.IsDevelopment())
 
 // Redirect HTTP requests to HTTPS when HTTPS is available.
 app.UseHttpsRedirection();
+app.UseCors("portal");
 
 
 // ============================================================
@@ -435,6 +444,58 @@ app.MapPost("/api/auth/login", async (
 });
 
 
+// ------------------------------------------------------------
+// POST: /api/auth/email-code
+// ------------------------------------------------------------
+// Sends the 6-digit sign-in code through Gmail SMTP.
+// The mailbox address and app password stay in user secrets.
+app.MapPost("/api/auth/email-code", async (
+    EmailCodeRequest request,
+    PortalMailer mailer,
+    CancellationToken cancellationToken) =>
+{
+    var email = request.Email?.Trim() ?? "";
+    var code = request.Code?.Trim() ?? "";
+    if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || code.Length != 6 || !code.All(char.IsDigit))
+    {
+        return Results.BadRequest(new
+        {
+            sent = false,
+            message = "A valid email and 6-digit code are required."
+        });
+    }
+
+    if (!mailer.IsConfigured)
+    {
+        return Results.Ok(new
+        {
+            sent = false,
+            message = "Gmail is not connected on the API, so the code was not emailed."
+        });
+    }
+
+    try
+    {
+        await mailer.SendCodeAsync(
+            email,
+            request.Name?.Trim() ?? "",
+            code,
+            request.Purpose ?? "login",
+            request.Link,
+            cancellationToken);
+        return Results.Ok(new { sent = true, message = "" });
+    }
+    catch (Exception)
+    {
+        return Results.Ok(new
+        {
+            sent = false,
+            message = "Gmail rejected the message. Check the app password."
+        });
+    }
+});
+
+
 // ============================================================
 // DATABASE MIGRATIONS AND SEEDING
 // ============================================================
@@ -509,4 +570,12 @@ public record CreateProjectRequest(
 public record LoginRequest(
     string Email,
     string Password
+);
+
+public record EmailCodeRequest(
+    string Email,
+    string? Name,
+    string Code,
+    string? Purpose,
+    string? Link
 );

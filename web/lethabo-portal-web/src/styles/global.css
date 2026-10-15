@@ -293,6 +293,18 @@ table.data tr:first-child td { border-top: 0; }
 .task__actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.overview { margin-top: 8px; }
+.overview__title { margin: 0 0 10px; font-size: 18px; }
+.overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.upload-preview { display: grid; gap: 8px; margin-top: 10px; }
+.upload-preview__media { width: 100%; max-height: 220px; object-fit: contain; border: 1px solid #ececec; border-radius: 12px; background: #fafafa; }
+.file-preview { width: 64px; height: 64px; object-fit: cover; border-radius: 10px; border: 1px solid #ececec; flex: none; }
+.doc-preview { padding: 12px 14px; background: #fff6b3; border-radius: 12px; font-weight: 700; }
+.draft-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.draft-card { display: grid; gap: 4px; text-align: left; border: 2px solid #111; border-radius: 16px; background: #fff; padding: 14px 16px; cursor: pointer; font: inherit; }
+.draft-card span { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.draft-card small { color: var(--muted); }
+.draft-card:hover { background: #fff6b3; }
 .file-row, .comment { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid #f2f3f5; }
 .file-row:first-of-type, .comment:first-of-type { border-top: 0; }
 .file-mark {
@@ -443,7 +455,7 @@ table.data tr:first-child td { border-top: 0; }
 
 @media (max-width: 1100px) {
   .stat-grid, .board, .team-grid, .client-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dashboard-grid, .split, .invoice-layout, .auth, .signin { grid-template-columns: 1fr; }
+  .dashboard-grid, .split, .overview-grid, .draft-grid, .invoice-layout, .auth, .signin { grid-template-columns: 1fr; }
   .auth__brand, .signin__brand { min-height: 0; }
   .signin__copy { margin: 36px 0 8px; padding: 0; }
   .signin__copy h1 { font-size: 40px; }

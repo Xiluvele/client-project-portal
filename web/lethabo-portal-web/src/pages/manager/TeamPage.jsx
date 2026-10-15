@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Avatar } from '../../components/ui/Avatar'
 import { Card } from '../../components/ui/Card'
@@ -7,7 +8,11 @@ export function TeamPage() {
   const { members, projects } = useAppState()
   return (
     <>
-      <PageIntro title="Team" subtitle="Developers, designers, and content — the people assigned across client work." />
+      <PageIntro
+        title="Team"
+        subtitle="Developers, designers, and content — the people assigned across client work."
+        actions={<Link className="btn btn--secondary" to="/team/dashboard">Back</Link>}
+      />
       <div className="team-grid">
         {members.map((member) => {
           const assigned = projects.filter((project) => project.memberIds.includes(member.id) && project.status !== 'done')

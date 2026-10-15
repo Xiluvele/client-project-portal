@@ -1,6 +1,6 @@
 export const CATEGORIES = [
+  { id: 'signins', label: 'User access' },
   { id: 'all', label: 'Everything' },
-  { id: 'signins', label: 'Sign-ins' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'projects', label: 'Projects' },
   { id: 'changes', label: 'Change requests' },
@@ -14,6 +14,7 @@ const SENTENCES = {
   user_edited: (e) => `${e.actor} updated ${e.target}'s account`,
   user_deactivated: (e) => `${e.actor} blocked ${e.target} from signing in`,
   user_activated: (e) => `${e.actor} allowed ${e.target} to sign in again`,
+  account_ready: (e) => `${e.actor} chose a password and activated ${e.target}`,
   project_created: (e) => `${e.actor} created the project ${e.target}`,
   project_updated: (e) => `${e.actor} updated the project ${e.target}`,
   change_decided: (e) => `${e.actor} decided on the change request ${e.target}`,

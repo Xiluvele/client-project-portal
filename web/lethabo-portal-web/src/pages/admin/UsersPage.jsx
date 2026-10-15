@@ -19,7 +19,7 @@ const ROLE_HINTS = {
 
 // There is no password field: the form no longer asks for one.
 const emptyForm = {
-  id: null, name: '', email: '', role: 'developer', phone: '', password: '', company: '', projectId: '',
+  id: null, name: '', email: '', role: 'developer', phone: '', password: '', company: '',
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -83,13 +83,14 @@ function FieldError({ message }) {
 }
 
 export function UsersPage() {
-  const { users, projects, clients, saveAccount, setAccountActive } = useAppState()
+  const { users, saveAccount, setAccountActive } = useAppState()
   const [form, setForm] = useState(emptyForm)
   const [open, setOpen] = useState(false)
   const [viewing, setViewing] = useState(null)
   const [confirming, setConfirming] = useState(null)
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
+  const [notice, setNotice] = useState('')
 
   const openAdd = () => {
     setForm(emptyForm)
@@ -107,7 +108,6 @@ export function UsersPage() {
       phone: account.phone || '',
       password: '',
       company: '',
-      projectId: '',
     })
     setError('')
     setErrors({})
@@ -116,13 +116,13 @@ export function UsersPage() {
 
   const set = (field) => (event) => setForm({ ...form, [field]: event.target.value })
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
     const found = validate(form, users)
     setErrors(found)
     if (Object.keys(found).length) return
 
-    const result = saveAccount({
+    const result = await saveAccount({
       ...form,
       name: form.name.trim(),
       email: form.email.trim(),
@@ -132,6 +132,11 @@ export function UsersPage() {
       setError(result.message)
       return
     }
+    if (!form.id && result.emailed) {
+      setNotice(`An activation email was sent to ${form.email.trim()}. They open the link, enter the code, and choose a password.`)
+    } else if (!form.id && result.previewCode) {
+      setNotice(`The account was saved, but the email did not send. ${result.message} Activation code: ${result.previewCode}. They open Activate account from the sign-in page.`)
+    }
     setOpen(false)
   }
 
@@ -139,13 +144,6 @@ export function UsersPage() {
   const viewed = viewing ? users.find((u) => u.id === viewing) : null
   const viewedInactive = viewed?.active === false
   const toConfirm = confirming ? users.find((u) => u.id === confirming) : null
-
-  // Staff can be given a project straight away; clients already belong to their company's projects.
-  const canAssignProject = !form.id && (form.role === 'developer' || form.role === 'manager')
-  const projectLabel = (project) => {
-    const client = clients.find((c) => c.id === project.clientId)
-    return client ? `${client.name} - ${project.name}` : project.name
-  }
 
   const toggleAccount = (account) => {
     if (account.active === false) setAccountActive(account.id, true)
@@ -159,6 +157,7 @@ export function UsersPage() {
         subtitle="View details, add people, and activate or deactivate who can sign in. A duplicate email is rejected."
         actions={<Button onClick={openAdd}>Add user</Button>}
       />
+      {notice ? <p className="notice" role="status">{notice}</p> : null}
       <Card>
         <div className="table-wrap">
           <table className="data">
@@ -174,6 +173,7 @@ export function UsersPage() {
             <tbody>
               {users.map((account) => {
                 const inactive = account.active === false
+                const waiting = account.activated === false && !inactive
                 return (
                   <tr key={account.id}>
                     <td>
@@ -184,8 +184,8 @@ export function UsersPage() {
                     <td>{roleLabel(account.role)}</td>
                     <td>
                       <StatusBadge
-                        status={inactive ? 'cancelled' : 'confirmed'}
-                        label={inactive ? 'Deactivated' : 'Active'}
+                        status={inactive ? 'cancelled' : waiting ? 'pending' : 'confirmed'}
+                        label={inactive ? 'Deactivated' : waiting ? 'Needs password' : 'Active'}
                       />
                     </td>
                     <td>
@@ -284,13 +284,6 @@ export function UsersPage() {
 
           <TextField label="Phone number (optional)" type="tel" value={form.phone} onChange={set('phone')} placeholder="082 123 4567" />
           <FieldError message={errors.phone} />
-
-          {canAssignProject ? (
-            <SelectField label="Assign to a project (optional)" value={form.projectId} onChange={set('projectId')}>
-              <option value="">No project yet</option>
-              {projects.map((project) => <option key={project.id} value={project.id}>{projectLabel(project)}</option>)}
-            </SelectField>
-          ) : null}
 
           <Button type="submit">Save account</Button>
         </form>

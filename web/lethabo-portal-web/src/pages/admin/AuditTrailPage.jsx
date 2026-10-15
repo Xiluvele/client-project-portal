@@ -9,8 +9,9 @@ const initials = (name = '?') => name.split(' ').map((w) => w[0]).slice(0, 2).jo
 export function AuditTrailPage() {
   // Uses auditLog from app state when it exists, otherwise the sample events.
   const state = useAppState()
-  const events = state.auditLog ?? SAMPLE_AUDIT
-  const [category, setCategory] = useState('all')
+  const live = state.auditLog ?? []
+  const events = live.length ? [...live, ...SAMPLE_AUDIT.filter((sample) => !live.some((item) => item.id === sample.id))] : SAMPLE_AUDIT
+  const [category, setCategory] = useState('signins')
 
   const counts = useMemo(() => {
     const map = { all: events.length }
@@ -33,7 +34,7 @@ export function AuditTrailPage() {
 
   return (
     <>
-      <PageIntro title="Audit trail" subtitle="Who did what, and when." />
+      <PageIntro title="Audit trail" subtitle="User access first: who signed in, who was blocked, and what changed afterwards." />
 
       <div className="audit-filters" role="group" aria-label="Filter the audit trail">
         {CATEGORIES.map((c) => (

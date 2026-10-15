@@ -21,6 +21,7 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
     public DbSet<ActivityEntry> Activities => Set<ActivityEntry>();
     public DbSet<PortalNotification> Notifications => Set<PortalNotification>();
     public DbSet<EmailOtp> EmailOtps => Set<EmailOtp>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -136,6 +137,7 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
             entity.Property(item => item.ProjectId).HasMaxLength(40);
             entity.Property(item => item.Name).HasMaxLength(260);
             entity.Property(item => item.Kind).HasMaxLength(40);
+            entity.Property(item => item.Description).HasMaxLength(500);
             entity.Property(item => item.UploadedBy).HasMaxLength(200);
             entity.Property(item => item.Approval).HasMaxLength(40);
             entity.HasOne(item => item.Project)
@@ -252,6 +254,20 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
                 .WithMany()
                 .HasForeignKey(item => item.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.ToTable("AuditEvents");
+            entity.Property(item => item.Id).HasMaxLength(40);
+            entity.Property(item => item.ActorName).HasMaxLength(200);
+            entity.Property(item => item.ActorEmail).HasMaxLength(200);
+            entity.Property(item => item.EventType).HasMaxLength(40);
+            entity.Property(item => item.Category).HasMaxLength(40);
+            entity.Property(item => item.Target).HasMaxLength(300);
+            entity.Property(item => item.Detail).HasMaxLength(2000);
+            entity.HasIndex(item => item.CreatedAt);
+            entity.HasIndex(item => item.Category);
         });
 
         modelBuilder.Entity<EmailOtp>(entity =>

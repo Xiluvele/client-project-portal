@@ -97,6 +97,8 @@ public class ProjectFile
     public PortalProject? Project { get; set; }
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "";
+    public string? Description { get; set; }
+    public string? PreviewUrl { get; set; }
     public string UploadedBy { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public string Approval { get; set; } = "pending";
@@ -179,6 +181,18 @@ public class PortalNotification
     public PortalProject? Project { get; set; }
     public string Text { get; set; } = "";
     public bool Read { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class AuditEvent
+{
+    public string Id { get; set; } = "";
+    public string ActorName { get; set; } = "";
+    public string? ActorEmail { get; set; }
+    public string EventType { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Target { get; set; } = "";
+    public string? Detail { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 

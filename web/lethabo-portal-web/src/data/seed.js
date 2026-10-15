@@ -6,7 +6,7 @@ export const teamMembers = [
   { id: 'nk', name: 'Naledi Khumalo', shortName: 'Naledi K.', role: 'Project Manager', initials: 'NK', email: 'naledi@lethabom.co.za', allocated: true },
   { id: 'tm', name: 'Thabo Molefe', shortName: 'Thabo M.', role: 'UI/UX Designer', initials: 'TM', email: 'thabo@lethabom.co.za', allocated: true },
   { id: 'sd', name: 'Sipho Dlamini', shortName: 'Sipho D.', role: 'Software Developer', initials: 'SD', email: 'sipho@lethabom.co.za', allocated: true },
-  { id: 'an', name: 'Amahle Nkosi', shortName: 'Amahle N.', role: 'Software Developer', initials: 'AN', email: 'amahle@lethabom.co.za', allocated: true },
+  { id: 'an', name: 'Amahle Nkosi', shortName: 'Amahle N.', role: 'Software Developer', initials: 'AN', email: 'amahle@lethabom.co.za', allocated: false },
   { id: 'lp', name: 'Lerato Pule', shortName: 'Lerato P.', role: 'Graphic Designer', initials: 'LP', email: 'lerato@lethabom.co.za', allocated: true },
   { id: 'km', name: 'Karabo Mensah', shortName: 'Karabo M.', role: 'Content Creator', initials: 'KM', email: 'karabo@lethabom.co.za', allocated: false },
 ]
@@ -22,7 +22,8 @@ export const clients = [
 ]
 
 export const users = [
-  { id: 'user-admin', name: 'Boitumelo Sithole', email: 'admin@lethabom.co.za', password: 'connect123', role: 'administrator', title: 'Administrator', active: true },
+  { id: 'user-nompumelelo', name: 'Nompumelelo Mncwango', email: 'nompumelelononhlanhla18@gmail.com', password: 'Connect@123', role: 'administrator', title: 'Administrator', active: true, activated: true },
+  { id: 'user-admin', name: 'Boitumelo Sithole', email: 'admin@lethabom.co.za', password: 'connect123', role: 'administrator', title: 'Administrator', active: true, activated: true },
   { id: 'user-nk', name: 'Naledi Khumalo', email: 'naledi@lethabom.co.za', password: 'connect123', role: 'manager', memberId: 'nk', title: 'Project Manager', active: true },
   { id: 'user-sipho', name: 'Sipho Dlamini', email: 'sipho@lethabom.co.za', password: 'connect123', role: 'developer', memberId: 'sd', title: 'Software Developer', active: true },
   { id: 'user-thandi', name: 'Thandi Kunene', email: 'thandi@kunene.co.za', password: 'connect123', role: 'client', clientId: 'kunene', title: 'Kunene Attorneys', active: true },
@@ -184,6 +185,19 @@ export const projects = [
 ]
 
 export const invoices = [
+  {
+    id: 'inv232',
+    number: 'INV232',
+    clientId: 'kunene',
+    projectId: 'kunene-web',
+    title: 'Website Rebuild',
+    status: 'draft',
+    issuedLabel: '15 Oct',
+    dueLabel: '29 Oct',
+    issuedAt: '2026-10-15',
+    dueAt: '2026-10-29',
+    items: [{ id: 'li8', description: 'Website Rebuild', qty: 1, amount: 8500 }],
+  },
   {
     id: 'inv231',
     number: 'INV231',

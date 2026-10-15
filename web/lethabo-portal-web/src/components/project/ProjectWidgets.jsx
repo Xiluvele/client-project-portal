@@ -87,12 +87,24 @@ export function TaskBoard({ project }) {
   )
 }
 
+export function FilePreview({ file, large = false }) {
+  if (!file?.previewUrl) return null
+  const image = file.previewUrl.startsWith('data:image') || file.kind === 'Image'
+  if (image) {
+    return <img className={large ? 'upload-preview__media' : 'file-preview'} src={file.previewUrl} alt="" />
+  }
+  if (large && file.kind === 'PDF') {
+    return <iframe className="upload-preview__media" title={file.name} src={file.previewUrl} />
+  }
+  return <div className="doc-preview">{file.kind} · {file.name}</div>
+}
+
 export function FileList({ project, canApprove = false }) {
   const { approveFile } = useAppState()
   if (!project.files.length) return <p className="empty">No files uploaded yet.</p>
   return project.files.map((file) => (
     <div className="file-row" key={file.id}>
-      <span className="file-mark">{file.kind}</span>
+      {file.previewUrl ? <FilePreview file={file} /> : <span className="file-mark">{file.kind}</span>}
       <div className="file-copy">
         <strong>{file.name}</strong>
         <small>Uploaded by {file.uploadedBy} · v{file.version || 1} · {formatRelative(file.createdAt)}{file.description ? ` · ${file.description}` : ''}</small>

@@ -2,13 +2,13 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { ActivatePage } from './pages/ActivatePage'
 import { ManagerDashboardPage } from './pages/manager/ManagerDashboardPage'
 import { ProjectsPage } from './pages/manager/ProjectsPage'
 import { ProjectWorkspacePage } from './pages/manager/ProjectWorkspacePage'
 import { InvoicesPage } from './pages/manager/InvoicesPage'
 import { ClientsPage } from './pages/manager/ClientsPage'
 import { TeamPage } from './pages/manager/TeamPage'
-import { SettingsPage } from './pages/manager/SettingsPage'
 import { ClientDashboardPage } from './pages/client/ClientDashboardPage'
 import { ClientProjectsPage } from './pages/client/ClientProjectsPage'
 import { ClientProjectPage } from './pages/client/ClientProjectPage'
@@ -40,6 +40,7 @@ export default function App() {
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
       <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+      <Route path="/activate" element={<ActivatePage />} />
       <Route path="/team" element={<RequireAuth role="manager"><AppShell audience="team" /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<ManagerDashboardPage />} />
@@ -49,7 +50,7 @@ export default function App() {
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="members" element={<TeamPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<Navigate to="/team/dashboard" replace />} />
       </Route>
       <Route path="/client" element={<RequireAuth role="client"><AppShell audience="client" /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />
