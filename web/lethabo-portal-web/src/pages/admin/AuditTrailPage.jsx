@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Card } from '../../components/ui/Card'
+import { API_BASE } from '../../lib/api'
 import { useAppState } from '../../state/useAppState'
 import { CATEGORIES, SAMPLE_AUDIT, describeEvent, dayLabel, timeLabel } from '../../lib/auditLog'
 
@@ -10,8 +11,30 @@ export function AuditTrailPage() {
   // Uses auditLog from app state when it exists, otherwise the sample events.
   const state = useAppState()
   const live = state.auditLog ?? []
-  const events = live.length ? [...live, ...SAMPLE_AUDIT.filter((sample) => !live.some((item) => item.id === sample.id))] : SAMPLE_AUDIT
+  const [remote, setRemote] = useState(null)
   const [category, setCategory] = useState('signins')
+
+  useEffect(() => {
+    const token = state.session?.token
+    if (!token) return undefined
+    let cancelled = false
+    fetch(`${API_BASE}/api/audit`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) setRemote(rows)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [state.session?.token])
+
+  const events = remote
+    ?? (live.length
+      ? [...live, ...SAMPLE_AUDIT.filter((sample) => !live.some((item) => item.id === sample.id))]
+      : SAMPLE_AUDIT)
 
   const counts = useMemo(() => {
     const map = { all: events.length }
@@ -73,7 +96,7 @@ export function AuditTrailPage() {
                             </>
                           ) : text}
                         </p>
-                        {e.detail ? (
+                        {Array.isArray(e.detail) ? (
                           <p className="audit-item__detail">
                             {e.detail.map(([k, from, to]) => `${k}: ${from ? `${from} → ` : ''}${to}`).join('  |  ')}
                           </p>

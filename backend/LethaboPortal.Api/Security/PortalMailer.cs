@@ -17,16 +17,24 @@ public sealed class PortalMailer(IConfiguration configuration, ILogger<PortalMai
         var password = configuration["Email:AppPassword"] ?? "";
         var fromName = configuration["Email:FromName"] ?? "Lethabo M Connect";
         var greeting = string.IsNullOrWhiteSpace(name) ? "Hello" : $"Hello {name}";
-        var welcome = purpose == "welcome";
-        var page = string.IsNullOrWhiteSpace(link) ? "the Activate account page on the portal" : link;
-        var body = welcome
-            ? $"{greeting},\n\nYour Lethabo M Connect account is ready.\nOpen this page and choose your password:\n{page}\n\nActivation code: {code}\nThe code expires in 24 hours.\n\nLethabo M Solutions\n"
-            : $"{greeting},\n\nYour 6-digit sign-in code is {code}.\nIt expires in 10 minutes.\n\nLethabo M Solutions\n";
+        var page = string.IsNullOrWhiteSpace(link) ? "the portal" : link;
+        var (subject, body) = purpose switch
+        {
+            "welcome" => (
+                "Activate your Lethabo M Connect account",
+                $"{greeting},\n\nYour Lethabo M Connect account is ready.\nOpen this page and choose your password:\n{page}\n\nActivation code: {code}\nThe code expires in 24 hours.\n\nLethabo M Solutions\n"),
+            "reset" => (
+                "Reset your Lethabo M Connect password",
+                $"{greeting},\n\nA password reset was requested for your account.\nOpen this page and enter the code:\n{page}\n\nReset code: {code}\nThe code expires in 15 minutes.\nIf you did not ask for this, you can ignore the email.\n\nLethabo M Solutions\n"),
+            _ => (
+                "Your Lethabo M Connect sign-in code",
+                $"{greeting},\n\nYour 6-digit sign-in code is {code}.\nIt expires in 10 minutes.\n\nLethabo M Solutions\n"),
+        };
 
         using var message = new MailMessage
         {
             From = new MailAddress(user, fromName),
-            Subject = welcome ? "Activate your Lethabo M Connect account" : "Your Lethabo M Connect sign-in code",
+            Subject = subject,
             Body = body,
         };
         message.To.Add(to);

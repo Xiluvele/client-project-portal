@@ -419,6 +419,7 @@ app.MapPost("/api/auth/login", async (
             user.PasswordHash
         ))
     {
+        await RecordAudit(db, "Unknown", email, "signin_failed", "signins", email, null, CancellationToken.None);
         return Results.Json(
             new
             {
@@ -495,6 +496,8 @@ app.MapPost("/api/auth/login", async (
         jwtAudience,
         expiresAt);
 
+    await RecordAudit(db, user.Name, user.Email, "signin", "signins", user.Email, null, CancellationToken.None);
+
     return Results.Ok(new
     {
         message = "Login successful.",
@@ -568,13 +571,155 @@ app.MapPost("/api/auth/email-code", async (
 
 
 // ------------------------------------------------------------
+// POST: /api/auth/forgot-password
+// ------------------------------------------------------------
+// Sends a short-lived code to an active account. The response
+// stays the same when the email is unknown, so the page does
+// not reveal which addresses are registered.
+app.MapPost("/api/auth/forgot-password", async (
+    ForgotPasswordRequest request,
+    PortalDbContext db,
+    PortalMailer mailer,
+    IConfiguration configuration,
+    CancellationToken cancellationToken) =>
+{
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    if (!email.Contains('@'))
+    {
+        return Results.BadRequest(new { ok = false, message = "Enter a valid email address." });
+    }
+
+    var sent = Results.Ok(new
+    {
+        ok = true,
+        message = "If that email belongs to an active account, a reset code has been sent."
+    });
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
+    if (user == null || !user.Active || !user.Activated)
+    {
+        return sent;
+    }
+
+    var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
+    user.ActivationCodeHash = PasswordHasher.Hash(code);
+    user.ActivationExpires = DateTime.UtcNow.AddMinutes(15);
+    user.ActivationAttempts = 0;
+    await db.SaveChangesAsync(cancellationToken);
+
+    if (!mailer.IsConfigured)
+    {
+        return sent;
+    }
+
+    try
+    {
+        await mailer.SendCodeAsync(email, user.Name, code, "reset", ResetLink(configuration), cancellationToken);
+    }
+    catch (Exception)
+    {
+        // The caller still receives the same response.
+    }
+
+    return sent;
+});
+
+
+// ------------------------------------------------------------
+// POST: /api/auth/reset-password
+// ------------------------------------------------------------
+app.MapPost("/api/auth/reset-password", async (
+    ResetPasswordRequest request,
+    PortalDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    var code = request.Code?.Trim() ?? "";
+    var password = request.Password ?? "";
+    if (!email.Contains('@') || code.Length != 6 || password.Length < 8)
+    {
+        return Results.BadRequest(new { ok = false, message = "Enter the email, the 6-digit code, and a password of at least 8 characters." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
+    if (user == null || !user.Active || !user.Activated)
+    {
+        return Results.Json(new { ok = false, message = "That code does not match the email." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (user.ActivationExpires is null || user.ActivationExpires < DateTime.UtcNow || string.IsNullOrWhiteSpace(user.ActivationCodeHash))
+    {
+        return Results.Json(new { ok = false, message = "That code has expired. Request a new one." }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!PasswordHasher.Verify(code, user.ActivationCodeHash))
+    {
+        user.ActivationAttempts += 1;
+        if (user.ActivationAttempts >= 3)
+        {
+            user.ActivationCodeHash = null;
+            user.ActivationExpires = null;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        var message = user.ActivationCodeHash == null
+            ? "Too many incorrect codes. Request a new one."
+            : "That code does not match the email. Try again.";
+        return Results.Json(new { ok = false, message }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    user.PasswordHash = PasswordHasher.Hash(password);
+    user.ActivationCodeHash = null;
+    user.ActivationExpires = null;
+    user.ActivationAttempts = 0;
+    user.FailedAttempts = 0;
+    user.Locked = false;
+    await db.SaveChangesAsync(cancellationToken);
+    await RecordAudit(db, user.Name, user.Email, "password_reset", "accounts", user.Email, null, cancellationToken);
+
+    return Results.Ok(new { ok = true, message = "Your password has been updated. Sign in with the new password." });
+});
+
+
+// ------------------------------------------------------------
 // POST: /api/accounts
 // ------------------------------------------------------------
 // Saves a new person in the shared database and emails an
 // activation code. The account cannot sign in until they
 // choose a password.
+app.MapGet("/api/audit", async (
+    string? category,
+    PortalDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var query = db.AuditEvents.AsNoTracking().AsQueryable();
+    if (category is "signins" or "accounts")
+    {
+        query = query.Where(item => item.Category == category);
+    }
+
+    var events = await query
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(100)
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(events.Select(item => new
+    {
+        id = item.Id,
+        at = DateTime.SpecifyKind(item.CreatedAt, DateTimeKind.Utc),
+        actor = item.ActorName,
+        email = item.ActorEmail,
+        type = item.EventType,
+        category = item.Category,
+        target = item.Target,
+        detail = item.Detail
+    }));
+}).RequireAuthorization(policy => policy.RequireRole("administrator"));
+
+
 app.MapPost("/api/accounts", async (
     CreateAccountRequest request,
+    ClaimsPrincipal principal,
     PortalDbContext db,
     PortalMailer mailer,
     IConfiguration configuration,
@@ -635,6 +780,15 @@ app.MapPost("/api/accounts", async (
     };
     db.Users.Add(user);
     await db.SaveChangesAsync(cancellationToken);
+    await RecordAudit(
+        db,
+        principal.FindFirstValue(ClaimTypes.Name) ?? "Administrator",
+        principal.FindFirstValue(ClaimTypes.Email),
+        "user_added",
+        "accounts",
+        name,
+        role,
+        cancellationToken);
 
     var emailed = false;
     var message = "";
@@ -728,6 +882,7 @@ app.MapPost("/api/accounts/activate", async (
     user.FailedAttempts = 0;
     user.Locked = false;
     await db.SaveChangesAsync(cancellationToken);
+    await RecordAudit(db, user.Name, user.Email, "account_ready", "accounts", user.Email, null, cancellationToken);
 
     return Results.Ok(new
     {
@@ -812,6 +967,30 @@ static string CreateJwtToken(
 
 static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..10]}";
 
+static async Task RecordAudit(
+    PortalDbContext db,
+    string actorName,
+    string? actorEmail,
+    string eventType,
+    string category,
+    string target,
+    string? detail,
+    CancellationToken cancellationToken)
+{
+    db.AuditEvents.Add(new AuditEvent
+    {
+        Id = NewId("audit"),
+        ActorName = actorName,
+        ActorEmail = actorEmail,
+        EventType = eventType,
+        Category = category,
+        Target = target,
+        Detail = detail,
+        CreatedAt = DateTime.UtcNow,
+    });
+    await db.SaveChangesAsync(cancellationToken);
+}
+
 static string ActivationLink(IConfiguration configuration, string? link)
 {
     var hosted = (configuration["Portal:PublicUrl"] ?? "https://client-project-portal-a28c.onrender.com").TrimEnd('/');
@@ -823,6 +1002,12 @@ static string ActivationLink(IConfiguration configuration, string? link)
     }
 
     return link;
+}
+
+static string ResetLink(IConfiguration configuration)
+{
+    var hosted = (configuration["Portal:PublicUrl"] ?? "https://client-project-portal-a28c.onrender.com").TrimEnd('/');
+    return $"{hosted}/forgot-password";
 }
 
 static string RoleTitle(string role) => role switch
@@ -898,6 +1083,16 @@ public record CreateAccountRequest(
 );
 
 public record ActivateAccountRequest(
+    string Email,
+    string Code,
+    string Password
+);
+
+public record ForgotPasswordRequest(
+    string Email
+);
+
+public record ResetPasswordRequest(
     string Email,
     string Code,
     string Password

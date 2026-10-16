@@ -3,7 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'dashboard_screen.dart';
+import '../api/portal_api.dart';
+import 'activate_screen.dart';
+import 'forgot_password_screen.dart';
+import 'sign_in_code_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -90,58 +93,31 @@ class _LoginScreenState extends State<LoginScreen> {
       // --------------------------------------------------------
 
       if (response.statusCode == 200) {
-        final userData = data['user'];
-
-        if (userData is! Map<String, dynamic>) {
+        final user = PortalUser.fromLogin(data);
+        if (user.id.isEmpty) {
           _showMessage('Unable to read user information.');
           return;
         }
 
-        final String userId = userData['id']?.toString() ?? '';
+        final code = PortalApi.sixDigitCode();
+        final mailed = await PortalApi.post('/api/auth/email-code', {
+          'email': user.email,
+          'name': user.name,
+          'code': code,
+          'purpose': 'login',
+        });
+        if (!mounted) return;
 
-        final String name = userData['name']?.toString() ?? '';
-
-        final String email = userData['email']?.toString() ?? '';
-
-        final String role = userData['role']?.toString() ?? '';
-
-        final String clientId = userData['clientId']?.toString() ?? '';
-
-        final String memberId = userData['memberId']?.toString() ?? '';
-
-        final String title = userData['title']?.toString() ?? '';
-
-        // For now we print the returned user information.
-        //
-        // Later we will store the authenticated user securely
-        // and use the role/clientId throughout the application.
-        debugPrint('==============================');
-        debugPrint('LOGIN SUCCESSFUL');
-        debugPrint('User ID: $userId');
-        debugPrint('Name: $name');
-        debugPrint('Email: $email');
-        debugPrint('Role: $role');
-        debugPrint('Client ID: $clientId');
-        debugPrint('Member ID: $memberId');
-        debugPrint('Title: $title');
-        debugPrint('==============================');
-
-        // Go to Dashboard only after successful login.
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => DashboardScreen(
-              userId: userId,
-              name: name,
-              email: email,
-              role: role,
-              clientId: clientId,
-              memberId: memberId,
-              title: title,
+            builder: (context) => SignInCodeScreen(
+              user: user,
+              initialCode: code,
+              emailed: mailed.ok && mailed.map['sent'] == true,
             ),
           ),
         );
-
         return;
       }
 
@@ -358,8 +334,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {
-                    // Forgot password functionality
-                    // will be added later.
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ForgotPasswordScreen(),
+                      ),
+                    );
                   },
                   child: const Text(
                     'Forgot password?',
@@ -415,7 +395,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 30),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ActivateScreen(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    'Activate account',
+                    style: TextStyle(color: yellow, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
 
               // ==================================================
               // FOOTER

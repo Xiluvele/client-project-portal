@@ -296,14 +296,6 @@ export function AppStateProvider({ children }) {
     persist(null);
   };
 
-  const register = async () => {
-    return {
-      ok: false,
-      message:
-        "Accounts are created by an Administrator. Please contact the Administrator to receive an activation invitation.",
-    };
-  };
-
   const resendOtp = async () => {
     if (!otpChallenge)
       return { ok: false, message: "Start again to request a code." };
@@ -1390,6 +1382,7 @@ export function AppStateProvider({ children }) {
 
   const value = {
     user: publicUser(user),
+    session,
     users,
     clients,
     projects,
@@ -1403,7 +1396,6 @@ export function AppStateProvider({ children }) {
     members: teamMembers,
     login,
     logout,
-    register,
     verifyOtp,
     resendOtp,
     cancelOtp,

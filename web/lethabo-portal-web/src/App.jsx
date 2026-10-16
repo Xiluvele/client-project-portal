@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell'
 import { LoginPage } from './pages/LoginPage'
-import { RegisterPage } from './pages/RegisterPage'
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ActivatePage } from './pages/ActivatePage'
 import { ManagerDashboardPage } from './pages/manager/ManagerDashboardPage'
 import { ProjectsPage } from './pages/manager/ProjectsPage'
@@ -39,7 +39,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomeRedirect />} />
       <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
-      <Route path="/register" element={<GuestOnly><RegisterPage /></GuestOnly>} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/register" element={<Navigate to="/forgot-password" replace />} />
       <Route path="/activate" element={<ActivatePage />} />
       <Route path="/team" element={<RequireAuth role="manager"><AppShell audience="team" /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />

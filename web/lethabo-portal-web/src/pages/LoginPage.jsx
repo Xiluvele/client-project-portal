@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EmailOtpStep } from "../components/auth/EmailOtpStep";
 import { Button } from "../components/ui/Button";
 import { TextField } from "../components/ui/Fields";
@@ -9,6 +9,8 @@ import { useAppState } from "../state/useAppState";
 export function LoginPage() {
   const { login, verifyOtp, resendOtp, cancelOtp } = useAppState();
   const navigate = useNavigate();
+  const location = useLocation();
+  const notice = location.state?.notice ?? "";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -123,6 +125,7 @@ export function LoginPage() {
               Use your Lethabo M Solutions staff account.
             </p>
 
+            {notice ? <div className="form-note">{notice}</div> : null}
             {error ? <div className="form-error">{error}</div> : null}
 
             <TextField
@@ -145,30 +148,12 @@ export function LoginPage() {
               onChange={(event) => setPassword(event.target.value)}
             />
 
-            {/*
-            <SelectField
-              label="Sign in as (prototype only)"
-              name="role"
-              value={roleId}
-              onChange={(event) => chooseRole(event.target.value)}
-            >
-              {PROTOTYPE_ROLES.map((role) => (
-                <option key={role.id} value={role.id}>
-                  {role.label}
-                </option>
-              ))}
-            </SelectField>
-            */}
-
             <Button type="submit" block disabled={loading}>
               {loading ? "Signing in..." : "Sign in"}
             </Button>
 
             <p className="signin__alt">
-              New to the portal?{" "}
-              <Link to="/register" onClick={cancelOtp}>
-                Create an account
-              </Link>
+              <Link to="/forgot-password">Forgot password?</Link>
             </p>
           </form>
         )}

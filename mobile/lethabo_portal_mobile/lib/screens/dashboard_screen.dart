@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'add_user_screen.dart';
+import 'audit_trail_screen.dart';
 import 'projects/projects_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -9,6 +11,7 @@ class DashboardScreen extends StatefulWidget {
   final String clientId;
   final String memberId;
   final String title;
+  final String token;
 
   const DashboardScreen({
     super.key,
@@ -19,6 +22,7 @@ class DashboardScreen extends StatefulWidget {
     required this.clientId,
     required this.memberId,
     required this.title,
+    this.token = '',
   });
 
   @override
@@ -56,6 +60,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             : 'Team Member';
     }
   }
+
+  bool get _isAdministrator => widget.role.trim().toLowerCase() == 'administrator';
 
   bool get _isManager {
     final role = widget.role.trim().toLowerCase();
@@ -173,6 +179,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     : 'Here\'s what\'s happening with your projects.',
                 style: const TextStyle(color: Colors.grey, fontSize: 14),
               ),
+
+              if (_isAdministrator) ...[
+                const SizedBox(height: 28),
+                _adminAction(
+                  icon: Icons.person_add_alt_1_rounded,
+                  title: 'Add user',
+                  subtitle: 'Send an activation email. Only an administrator can do this.',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddUserScreen(token: widget.token),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                _adminAction(
+                  icon: Icons.fact_check_outlined,
+                  title: 'Audit trail',
+                  subtitle: 'User access, accounts, and everything that was recorded.',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AuditTrailScreen(token: widget.token),
+                      ),
+                    );
+                  },
+                ),
+              ],
 
               const SizedBox(height: 28),
 
@@ -387,6 +424,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
             label: 'Profile',
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _adminAction({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: cardColor,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Icon(icon, color: yellow),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+            ],
+          ),
+        ),
       ),
     );
   }
