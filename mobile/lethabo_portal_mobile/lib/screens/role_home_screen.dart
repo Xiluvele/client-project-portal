@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../api/portal_api.dart';
+import '../project_access.dart';
 import 'projects/projects_details_screen.dart';
 
 class RoleHomeScreen extends StatefulWidget {
   final String name;
+  final String email;
   final String role;
   final String clientId;
   final String memberId;
@@ -14,6 +16,7 @@ class RoleHomeScreen extends StatefulWidget {
   const RoleHomeScreen({
     super.key,
     required this.name,
+    this.email = '',
     required this.role,
     required this.clientId,
     required this.memberId,
@@ -40,6 +43,8 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
 
   final _search = TextEditingController();
   List<Map<String, dynamic>> _projects = [];
+  List<Map<String, dynamic>> _clients = [];
+  List<Map<String, dynamic>> _members = [];
   String _status = 'all';
   bool _loading = true;
   String? _error;
@@ -95,26 +100,16 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
     }
   }
 
-  List<Map<String, dynamic>> get _mine {
-    if (_isClient) {
-      final id = widget.clientId.trim();
-      if (id.isEmpty) return [];
-      return _projects.where((project) => project['clientId']?.toString() == id).toList();
-    }
-    final ids = {widget.memberId.trim(), widget.userId.trim()}.where((id) => id.isNotEmpty).toSet();
-    if (ids.isEmpty) return [];
-    return _projects.where((project) {
-      final members = project['memberIds'];
-      if (members is List && members.map((item) => item.toString()).any(ids.contains)) return true;
-      final tasks = project['tasks'];
-      if (tasks is! List) return false;
-      return tasks.any((task) {
-        if (task is! Map) return false;
-        final assignee = task['assigneeId']?.toString() ?? '';
-        return ids.contains(assignee);
-      });
-    }).toList();
-  }
+  List<Map<String, dynamic>> get _mine => visibleProjects(
+        projects: _projects,
+        role: widget.role,
+        clientId: widget.clientId,
+        memberId: widget.memberId,
+        userId: widget.userId,
+        email: widget.email,
+        clients: _clients,
+        members: _members,
+      );
 
   List<Map<String, dynamic>> get _filtered {
     final query = _search.text.trim().toLowerCase();
@@ -131,11 +126,15 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
       _error = null;
     });
     final result = await PortalApi.get('/api/projects', token: widget.token);
+    final clients = await PortalApi.get('/api/clients', token: widget.token);
+    final members = await PortalApi.get('/api/team-members', token: widget.token);
     if (!mounted) return;
     setState(() {
       _loading = false;
       if (result.ok) {
         _projects = result.list.map((item) => item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{}).toList();
+        _clients = clients.list.map((item) => item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{}).toList();
+        _members = members.list.map((item) => item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{}).toList();
       } else {
         _error = result.message;
       }
@@ -154,6 +153,7 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
         ),
       ),
     );
+    if (mounted) _load();
   }
 
   @override

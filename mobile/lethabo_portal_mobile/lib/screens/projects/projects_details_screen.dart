@@ -341,7 +341,8 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           title: '${file['name'] ?? ''}',
                           meta: '${file['uploadedBy'] ?? ''} · ${_relative(file['createdAt']?.toString())}',
                           actions: [
-                            if ('${file['previewUrl'] ?? ''}'.isNotEmpty) _textButton('Preview', () => _preview(file)),
+                            if (_isPicture(file)) _textButton('Preview', () => _preview(file)),
+                            if (_canSave(file)) _textButton('Download', () => _download(file)),
                             if (_isClient && file['approval'] == 'pending') ...[
                               _textButton('Approve', () => _act('/api/projects/${widget.projectId}/files/${file['id']}/decision', {'status': 'approved'})),
                               _textButton('Decline', () => _act('/api/projects/${widget.projectId}/files/${file['id']}/decision', {'status': 'declined'})),
@@ -538,7 +539,8 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           children: [
                             _textButton('Attach file', _pickAttachment),
                             if (_attachment != null) Text(_attachment!['name'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                            if (_attachment?['previewUrl']?.isNotEmpty == true) _textButton('Preview', () => _preview(_attachment!)),
+                            if (_attachment != null && _isPicture(_attachment!)) _textButton('Preview', () => _preview(_attachment!)),
+                            if (_attachment != null && _canSave(_attachment!)) _textButton('Download', () => _download(_attachment!)),
                           ],
                         ),
                         Align(
@@ -583,8 +585,10 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
       title: '${request['description'] ?? ''}',
       meta: '${request['attachmentName'] ?? 'No file attached'}',
       actions: [
-        if ('${preview['previewUrl'] ?? preview['name'] ?? ''}'.isNotEmpty && '${request['attachmentName'] ?? ''}'.isNotEmpty)
+        if (_isPicture(preview))
           _textButton('Preview', () => _preview(preview)),
+        if (_canSave(preview))
+          _textButton('Download', () => _download(preview)),
         if (_canManage && waiting) ...[
           _textButton('Approve', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'approved'})),
           _textButton('Reject', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'rejected'})),
@@ -647,20 +651,58 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
   }
 
   Future<void> _pickAttachment() async {
-    final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.custom, allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf']);
+    final picked = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'doc', 'docx'],
+    );
     if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
+    final stored = _storedFile(picked.files.first);
+    if (stored == null) {
+      _toast('That file is too large to store. Choose one under 300 KB.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _attachment = stored);
+  }
+
+  Map<String, dynamic>? _storedFile(PlatformFile file) {
     final name = file.name;
     final lower = name.toLowerCase();
     final image = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp');
-    String preview = '';
+    final pdf = lower.endsWith('.pdf');
     final bytes = file.bytes;
-    if (image && bytes != null && bytes.length <= 350000) {
-      final type = lower.endsWith('.png') ? 'png' : lower.endsWith('.webp') ? 'webp' : 'jpeg';
-      preview = 'data:image/$type;base64,${base64Encode(bytes)}';
+    if (bytes == null || bytes.length > 350000) return null;
+    final mime = image
+        ? 'image/${lower.endsWith('.png') ? 'png' : lower.endsWith('.webp') ? 'webp' : 'jpeg'}'
+        : pdf
+            ? 'application/pdf'
+            : 'application/octet-stream';
+    return {
+      'name': name,
+      'kind': image ? 'Image' : pdf ? 'PDF' : 'File',
+      'previewUrl': 'data:$mime;base64,${base64Encode(bytes)}',
+    };
+  }
+
+  bool _isPicture(Map<String, dynamic> file) => '${file['previewUrl'] ?? ''}'.startsWith('data:image') || '${file['kind'] ?? ''}'.toLowerCase() == 'image';
+
+  bool _canSave(Map<String, dynamic> file) {
+    final url = '${file['previewUrl'] ?? ''}';
+    return url.startsWith('data:') && !_isPicture(file);
+  }
+
+  Future<void> _download(Map<String, dynamic> file) async {
+    final url = '${file['previewUrl'] ?? ''}';
+    final name = '${file['name'] ?? 'document'}';
+    final comma = url.indexOf(',');
+    if (!url.startsWith('data:') || comma < 0) {
+      _toast('This document has no file stored.');
+      return;
     }
-    if (!mounted) return;
-    setState(() => _attachment = {'name': name, 'kind': image ? 'Image' : 'PDF', 'previewUrl': preview});
+    final saved = await FilePicker.platform.saveFile(fileName: name, bytes: base64Decode(url.substring(comma + 1)));
+    if (!mounted || saved == null) return;
+    _toast('Saved $name');
   }
 
   void _preview(Map<String, dynamic> file) {
@@ -832,9 +874,22 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
     });
   }
 
-  Future<void> _addFile() {
-    return _prompt('Upload file', [const _PromptField('name', 'File name')], (values) {
-      return _act('/api/projects/${widget.projectId}/files', {'name': values['name']});
+  Future<void> _addFile() async {
+    final picked = await FilePicker.platform.pickFiles(
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf', 'doc', 'docx'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final stored = _storedFile(picked.files.first);
+    if (stored == null) {
+      _toast('That file is too large to store. Choose one under 300 KB.');
+      return;
+    }
+    await _act('/api/projects/${widget.projectId}/files', {
+      'name': stored['name'],
+      'kind': stored['kind'],
+      'previewUrl': stored['previewUrl'],
     });
   }
 

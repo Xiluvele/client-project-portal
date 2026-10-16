@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CHANGE_STATUSES, REQUIREMENT_STATUSES, TASK_LANES, commentSpeaker, projectProgress } from '../../domain/catalog'
-import { readPreview } from '../../lib/filePreview'
+import { downloadFile, isImage, readPreview } from '../../lib/filePreview'
 import { effectiveStatus, invoiceTotal } from '../../lib/invoiceDates'
 import { cx, formatRand, formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
@@ -447,7 +447,12 @@ export function ProjectBrief({ project, audience = 'manager', onNewTask, onUploa
               <small>{file.uploadedBy} · {formatRelative(file.createdAt)}</small>
             </div>
             <div className="accordion__actions">
-              <Button size="small" variant="secondary" onClick={() => setPreviewFile(file)}>Preview</Button>
+              {file.previewUrl ? (
+                <>
+                  <Button size="small" variant="secondary" onClick={() => setPreviewFile(file)}>{isImage(file) ? 'Preview' : 'Open'}</Button>
+                  {isImage(file) ? null : <Button size="small" variant="secondary" onClick={() => downloadFile(file)}>Download</Button>}
+                </>
+              ) : null}
               {isClient && file.approval === 'pending' ? (
                 <>
                   <Button size="small" variant="secondary" onClick={() => decideFile(project.id, file.id, 'approved')}>Approve</Button>

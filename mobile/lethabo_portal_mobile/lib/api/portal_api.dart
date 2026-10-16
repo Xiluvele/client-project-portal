@@ -23,6 +23,14 @@ class PortalApi {
     return _send('POST', path, body: body, token: token);
   }
 
+  static Future<ApiResult> put(
+    String path,
+    Map<String, dynamic> body, {
+    String? token,
+  }) {
+    return _send('PUT', path, body: body, token: token);
+  }
+
   static Future<ApiResult> get(String path, {String? token}) {
     return _send('GET', path, token: token);
   }
@@ -40,9 +48,12 @@ class PortalApi {
       }
 
       final uri = Uri.parse('$baseUrl$path');
-      final response = method == 'GET'
-          ? await http.get(uri, headers: headers)
-          : await http.post(uri, headers: headers, body: jsonEncode(body));
+      final encoded = body == null ? null : jsonEncode(body);
+      final response = switch (method) {
+        'GET' => await http.get(uri, headers: headers),
+        'PUT' => await http.put(uri, headers: headers, body: encoded),
+        _ => await http.post(uri, headers: headers, body: encoded),
+      };
 
       Object? data;
       if (response.body.isNotEmpty) {
@@ -108,14 +119,19 @@ class PortalUser {
     final user = body['user'];
     final record = user is Map<String, dynamic> ? user : <String, dynamic>{};
     return PortalUser(
-      id: record['id']?.toString() ?? '',
-      name: record['name']?.toString() ?? '',
-      email: record['email']?.toString() ?? '',
-      role: record['role']?.toString() ?? '',
-      clientId: record['clientId']?.toString() ?? '',
-      memberId: record['memberId']?.toString() ?? '',
-      title: record['title']?.toString() ?? '',
-      token: body['token']?.toString() ?? '',
+      id: _text(record, 'id'),
+      name: _text(record, 'name'),
+      email: _text(record, 'email'),
+      role: _text(record, 'role'),
+      clientId: _text(record, 'clientId'),
+      memberId: _text(record, 'memberId'),
+      title: _text(record, 'title'),
+      token: body['token']?.toString() ?? body['Token']?.toString() ?? '',
     );
+  }
+
+  static String _text(Map<String, dynamic> record, String camel) {
+    final pascal = camel[0].toUpperCase() + camel.substring(1);
+    return record[camel]?.toString() ?? record[pascal]?.toString() ?? '';
   }
 }

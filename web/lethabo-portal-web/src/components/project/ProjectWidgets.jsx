@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { commentSpeaker, projectProgress } from '../../domain/catalog'
 import { formatRelative } from '../../lib/format'
+import { downloadFile, isImage, isPdf } from '../../lib/filePreview'
 import { useAppState } from '../../state/useAppState'
 import { Avatar, AvatarStack } from '../ui/Avatar'
 import { Button } from '../ui/Button'
@@ -37,16 +38,52 @@ const TrashIcon = () => (
   </svg>
 )
 
+function documentUrl(dataUrl) {
+  const comma = dataUrl.indexOf(',')
+  if (!dataUrl.startsWith('data:') || comma < 0) return dataUrl
+  const mime = dataUrl.slice(5, comma).split(';')[0] || 'application/octet-stream'
+  const binary = atob(dataUrl.slice(comma + 1))
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+  return URL.createObjectURL(new Blob([bytes], { type: mime }))
+}
+
+function PdfFrame({ file }) {
+  const [src, setSrc] = useState('')
+  useEffect(() => {
+    const url = file.previewUrl.startsWith('data:') ? documentUrl(file.previewUrl) : file.previewUrl
+    setSrc(url)
+    return () => {
+      if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+    }
+  }, [file.previewUrl])
+  if (!src) return null
+  return <iframe className="upload-preview__media" title={file.name || 'Document'} src={src} />
+}
+
 export function FilePreview({ file, large = false }) {
   if (!file?.previewUrl) return null
-  const image = file.previewUrl.startsWith('data:image') || file.kind === 'Image'
-  if (image) {
+  if (isImage(file)) {
     return <img className={large ? 'upload-preview__media' : 'file-preview'} src={file.previewUrl} alt="" />
   }
-  if (large && file.kind === 'PDF') {
-    return <iframe className="upload-preview__media" title={file.name} src={file.previewUrl} />
+  if (large && isPdf(file)) {
+    return (
+      <div className="stack">
+        <PdfFrame file={file} />
+        <Button variant="secondary" onClick={() => downloadFile(file)}>Download</Button>
+      </div>
+    )
   }
-  return <div className="doc-preview">{file.kind} · {file.name}</div>
+  if (large) {
+    return (
+      <div className="doc-preview">
+        <p>{file.name}</p>
+        <p>This document opens on your device.</p>
+        <Button variant="secondary" onClick={() => downloadFile(file)}>Download</Button>
+      </div>
+    )
+  }
+  return <div className="doc-preview">{file.kind || 'Document'} · {file.name}</div>
 }
 
 export function FileList({ project, canApprove = false }) {

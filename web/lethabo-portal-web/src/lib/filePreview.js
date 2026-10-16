@@ -22,6 +22,30 @@ export function kindFromFile(file) {
   return 'File'
 }
 
+export function isImage(file) {
+  const url = String(file?.previewUrl || '')
+  const kind = String(file?.kind || '').toLowerCase()
+  return kind === 'image' || url.startsWith('data:image') || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(url)
+}
+
+export function isPdf(file) {
+  const url = String(file?.previewUrl || '')
+  const name = String(file?.name || '').toLowerCase()
+  const kind = String(file?.kind || '').toLowerCase()
+  return kind === 'pdf' || name.endsWith('.pdf') || url.startsWith('data:application/pdf')
+}
+
+export function downloadFile(file) {
+  const url = String(file?.previewUrl || '')
+  if (!url) return
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = file?.name || 'document'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+}
+
 export function readPreview(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
