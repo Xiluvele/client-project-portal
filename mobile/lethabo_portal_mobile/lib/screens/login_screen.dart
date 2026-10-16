@@ -205,9 +205,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 40),
 
-              // ==================================================
               // WELCOME TEXT
-              // ==================================================
               const Text(
                 'Welcome back',
                 style: TextStyle(
@@ -218,7 +216,6 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
 
               const SizedBox(height: 8),
-
               Text(
                 'Sign in to continue to your project portal.',
                 style: TextStyle(color: Colors.grey.shade400, fontSize: 15),
