@@ -45,14 +45,12 @@ clientPortal/
 | ORM | Entity Framework Core |
 | Web Hosting | Render Static Site |
 | API Hosting | Microsoft Azure App Service |
-| Authentication | PBKDF2 password hashing |
+| Authentication | JWT bearer tokens, PBKDF2 password hashing |
 | Source Control | Git / GitHub |
 
 ---
 
 # Current Development Status
-
-The project is currently under active development.
 
 ## Completed
 
@@ -91,62 +89,47 @@ The following functionality has been implemented:
 - Flutter project data retrieved from the API
 - Real mobile login connected to the ASP.NET Core API
 - Successful end-to-end login from Flutter to Azure SQL
+- JWT issued after a successful password check and sent as a Bearer token
+- Web session stores the token and sends it on later API calls
+- Mobile screens send the same token on API calls
+- Logout on the website and the phone
+- Role checks on project changes, invoices, accounts, and the audit trail
+- Forgot-password and reset-password
+- Email sign-in code after the password
+- Account activation for people added by an administrator
+- Tasks, files, comments, change requests, requirements, milestones, and invoices saved through the API
+- Notifications stored in the database and shown on the website and the phone
+- Role menus on the website and the phone
+- Local website and phone call the hosted Azure API
 
-The current authentication flow is:
+The sign-in flow is:
 
 ```text
-Flutter Mobile App
+Website or phone
         ↓
-Azure App Service
+POST /api/auth/login
         ↓
-ASP.NET Core API
+Password check against Azure SQL
         ↓
-Azure SQL
+JWT with the user id and role
         ↓
-Password verification
+6-digit email code
         ↓
-Authenticated user
-        ↓
-Flutter Dashboard
+Role menu
 ```
 
----
+If the password is forgotten, the sign-in page links to **Forgot password**. The API emails a 6-digit reset code, and `POST /api/auth/reset-password` stores the new password.
 
-# Next Development Phase
+## Roles
 
-The next major phase is **authentication and authorization security**.
-
-The current login endpoint validates the user's email address and password successfully, but the final token-based authentication system still needs to be implemented.
-
-Next tasks include:
-
-- Add JWT authentication
-- Generate authentication tokens after successful login
-- Securely store authentication tokens in Flutter
-- Add logout functionality
-- Keep users signed in securely
-- Protect API endpoints
-- Implement role-based authorization
-- Restrict client access to their own projects
-- Restrict developers to assigned work
-- Add Project Manager permissions
-- Add Administrator permissions
-- Connect remaining mobile screens to the API
-- Implement forgot-password functionality
-- Continue project details, tasks, milestones, comments and files
-- Add notifications
-- Perform security and application testing
-
-The intended roles are:
-
-| Role | Intended Access |
+| Role | Access |
 | --- | --- |
-| Administrator | System administration and broad system access |
-| Project Manager | Manage projects, clients and team allocations |
-| Developer | View and update assigned projects/tasks |
-| Client | View only projects and information belonging to their organisation |
+| Administrator | Adds people, edits role and company, activates or deactivates accounts, and reads the audit trail |
+| Project Manager | Creates projects, assigns developers, adds tasks, files, messages, milestones, and invoices, reminds the client, and approves work in review |
+| Developer | Sees assigned projects, moves tasks through To Do, In Progress, In Review, and Done, and uploads files and comments |
+| Client | Sees their own projects, confirms requirements, sends change requests, comments, and approves or declines files and invoices |
 
-> **Important:** Role-based API authorization is still under development. The current project endpoints must not yet be considered production-secure.
+Each signed-in person only sees the menu for their role. Project changes require the Bearer token and the matching role.
 
 ---
 
@@ -205,6 +188,8 @@ http://localhost:5173/
 
 Open the address in a browser.
 
+The local website uses the hosted Azure API from `web/lethabo-portal-web/.env.development`. A local database firewall rule is not required to sign in or load projects. Restart Vite after that file changes.
+
 Stop the application with:
 
 ```text
@@ -213,25 +198,18 @@ Ctrl + C
 
 ---
 
-# Demo Accounts
+# Accounts
 
-The development database contains the following demo accounts.
+There is no shared demo password. The old sample accounts (`admin@lethabom.co.za`, `naledi@lethabom.co.za`, `sipho@lethabom.co.za`, `thandi@kunene.co.za`, and `lindiwe@vukaretail.co.za`) are no longer used.
 
-The current demo password is:
+An administrator creates each person on **Team & Access**:
 
-```text
-connect123
-```
+1. Choose **Add user** and enter the name, email, and role. A client also needs a company name.
+2. **Save account**. The person receives an activation email.
+3. They open **Activate account**, choose a password, and sign in.
+4. After the password, they enter the 6-digit code sent to that inbox.
 
-| User | Email | Role |
-| --- | --- | --- |
-| Boitumelo Sithole | admin@lethabom.co.za | Administrator |
-| Naledi Khumalo | naledi@lethabom.co.za | Project Manager |
-| Sipho Dlamini | sipho@lethabom.co.za | Developer |
-| Thandi Kunene | thandi@kunene.co.za | Client — Kunene Attorneys |
-| Lindiwe Ndlovu | lindiwe@vukaretail.co.za | Client — Vuka Retail |
-
-These accounts are intended for **development and demonstration purposes only**.
+If a password is forgotten, use **Forgot password?** on the sign-in page. The reset code expires in 15 minutes. The new password must be at least 8 characters.
 
 ---
 
@@ -308,6 +286,16 @@ The following endpoints are currently available:
 | POST | `/api/auth/email-code` | Send an email sign-in/verification code |
 | POST | `/api/accounts` | Create a new account and activation code |
 | POST | `/api/accounts/activate` | Activate an account and set its password |
+| POST | `/api/auth/forgot-password` | Email a 6-digit password reset code |
+| POST | `/api/auth/reset-password` | Save a new password with that code |
+
+Project changes, invoices, accounts, notifications, and the audit trail require:
+
+```text
+Authorization: Bearer <token>
+```
+
+The token is the `token` value returned by `POST /api/auth/login`. It expires after 8 hours.
 
 Example local health check:
 
@@ -342,13 +330,15 @@ Example request:
 
 ```json
 {
-  "email": "thandi@kunene.co.za",
-  "password": "connect123"
+  "email": "person@example.com",
+  "password": "their-password"
 }
 ```
 
-A successful login currently returns basic information about the authenticated user, including:
+A successful login returns a JWT and the signed-in user:
 
+- Token
+- Expiry time
 - User ID
 - Name
 - Email
@@ -357,7 +347,7 @@ A successful login currently returns basic information about the authenticated u
 - Team member ID
 - Title
 
-JWT/token authentication and protected API endpoints are the next security development phase.
+The website and the phone keep that token for the session and send it as `Authorization: Bearer <token>`. Logging out clears the session. The website also asks for the 6-digit email code before the role menu opens.
 
 ---
 
@@ -568,22 +558,27 @@ flutter run
 
 An Android emulator or physical Android device must be available.
 
+The phone uses the same hosted Azure API as the website. It does not call a database on the development machine.
+
 The current mobile application includes:
 
 - Splash screen
 - Login screen
-- Dashboard
-- Projects screen
-- Azure API connectivity
-- Real user authentication
+- Sign-in code screen
+- Profile and logout
+- Administrator: Team & Access and Audit trail
+- Project manager: Projects, Invoices, and Team
+- Developer: Projects and My tasks
+- Client: Dashboard and Invoices
+- Messages for notifications
 
-The Flutter login screen currently communicates with:
+The Flutter login screen communicates with:
 
 ```text
 POST /api/auth/login
 ```
 
-on the deployed Azure API.
+on the deployed Azure API, then sends the returned token on later calls.
 
 ---
 
@@ -637,13 +632,12 @@ Always review `git status` before committing to make sure passwords, secrets, ge
 
 - Never commit the Azure SQL password.
 - Never store user passwords as plain text.
-- Development passwords must be changed before production use.
-- Protect API endpoints using authentication and authorization.
-- Clients must only be allowed to access their own project information.
-- Developers must only access authorised/assigned project information.
+- Project changes, invoices, accounts, and the audit trail require a valid Bearer token and the matching role.
+- Clients work with their own projects, files, and invoices.
+- Developers work with projects and tasks assigned to them.
 - Sensitive configuration should use user secrets during local development and environment variables in Azure.
 - Production applications should use HTTPS.
-- Demo credentials are for development/testing only.
+- Do not commit account passwords. People receive their own activation or reset email.
 
 ---
 
@@ -660,7 +654,7 @@ As of the current development milestone:
 **React Render Deployment:** Complete  
 **Account Creation & Activation:** Complete  
 **Email Code API Integration:** Complete  
-**JWT & Role-Based Authorization:** Next  
-**Role-Aware Flutter Dashboard:** In Progress  
-**Remaining Portal Features:** In Progress  
-**Security Hardening & Final Testing:** Pending
+**JWT & Role-Based Authorization:** Complete  
+**Forgot Password:** Complete  
+**Role-Aware Website and Phone:** Complete  
+**Tasks, Files, Comments, Invoices, and Notifications:** Complete
