@@ -32,9 +32,19 @@ export async function loginRemote(email, password) {
       };
     }
 
+    // The backend now returns a JWT after successful authentication.
+    if (!body.token) {
+      return {
+        ok: false,
+        message: "The API did not return an authentication token.",
+      };
+    }
+
     return {
       ok: true,
       user: body.user,
+      token: body.token,
+      expiresAt: body.expiresAt,
       message: body.message || "Login successful.",
     };
   } catch {

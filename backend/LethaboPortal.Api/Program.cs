@@ -1,8 +1,13 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text;
 using LethaboPortal.Api.Data;
 using LethaboPortal.Api.Domain;
 using LethaboPortal.Api.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +27,47 @@ builder.Services.AddCors(options =>
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
+
+
+// ============================================================
+// JWT AUTHENTICATION
+// ============================================================
+// Store Jwt:Key in user-secrets locally and Jwt__Key in Azure.
+// Never put the real signing key in source control.
+var jwtKey = builder.Configuration["Jwt:Key"];
+
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+{
+    throw new InvalidOperationException(
+        "JWT signing key is not configured or is too short. " +
+        "Use at least 32 characters. Run: " +
+        "dotnet user-secrets set \"Jwt:Key\" \"<strong-random-key>\"");
+}
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "LethaboPortal.Api";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "LethaboPortal.Clients";
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.FromMinutes(1),
+            NameClaimType = ClaimTypes.Name,
+            RoleClaimType = ClaimTypes.Role
+        };
+    });
+
+builder.Services.AddAuthorization();
 
 
 // Register PortalDbContext with dependency injection.
@@ -79,6 +125,8 @@ if (app.Environment.IsDevelopment())
 // Redirect HTTP requests to HTTPS when HTTPS is available.
 app.UseHttpsRedirection();
 app.UseCors("portal");
+app.UseAuthentication();
+app.UseAuthorization();
 
 
 // ============================================================
@@ -436,15 +484,23 @@ app.MapPost("/api/auth/login", async (
     // Successful login
     // --------------------------------------------------------
 
-    // For now, return the user's basic information.
-    //
-    // IMPORTANT:
-    // We will add proper authentication tokens (JWT)
-    // before using this as the final production
-    // authentication implementation.
+    // Create a signed JWT for this authenticated user.
+    // The user's role is included so protected endpoints can
+    // enforce Administrator/Manager/Developer/Client permissions.
+    var expiresAt = DateTime.UtcNow.AddHours(8);
+
+    var token = CreateJwtToken(
+        user,
+        jwtKey,
+        jwtIssuer,
+        jwtAudience,
+        expiresAt);
+
     return Results.Ok(new
     {
         message = "Login successful.",
+        token,
+        expiresAt,
 
         user = new
         {
@@ -607,7 +663,8 @@ app.MapPost("/api/accounts", async (
         message,
         user = new { user.Id, user.Name, user.Email, user.Role, user.ClientId, user.MemberId, user.Title, user.Phone }
     });
-});
+})
+.RequireAuthorization(policy => policy.RequireRole("administrator"));
 
 
 // ------------------------------------------------------------
@@ -707,6 +764,51 @@ await using (var scope =
 // ============================================================
 
 app.Run();
+
+static string CreateJwtToken(
+    PortalUser user,
+    string jwtKey,
+    string issuer,
+    string audience,
+    DateTime expiresAt)
+{
+    var claims = new List<Claim>
+    {
+        new(JwtRegisteredClaimNames.Sub, user.Id),
+        new(JwtRegisteredClaimNames.Email, user.Email),
+        new(ClaimTypes.NameIdentifier, user.Id),
+        new(ClaimTypes.Name, user.Name),
+        new(ClaimTypes.Email, user.Email),
+        new(ClaimTypes.Role, user.Role)
+    };
+
+    if (!string.IsNullOrWhiteSpace(user.ClientId))
+    {
+        claims.Add(new Claim("clientId", user.ClientId));
+    }
+
+    if (!string.IsNullOrWhiteSpace(user.MemberId))
+    {
+        claims.Add(new Claim("memberId", user.MemberId));
+    }
+
+    var key = new SymmetricSecurityKey(
+        Encoding.UTF8.GetBytes(jwtKey));
+
+    var credentials = new SigningCredentials(
+        key,
+        SecurityAlgorithms.HmacSha256);
+
+    var token = new JwtSecurityToken(
+        issuer: issuer,
+        audience: audience,
+        claims: claims,
+        notBefore: DateTime.UtcNow,
+        expires: expiresAt,
+        signingCredentials: credentials);
+
+    return new JwtSecurityTokenHandler().WriteToken(token);
+}
 
 static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..10]}";
 

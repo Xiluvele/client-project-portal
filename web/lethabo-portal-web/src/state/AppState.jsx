@@ -71,6 +71,7 @@ export function AppStateProvider({ children }) {
   const [notifications, setNotifications] = useState(seed.notifications);
   const [session, setSession] = useState(() => readSession());
   const [otpChallenge, setOtpChallenge] = useState(null);
+  const [pendingToken, setPendingToken] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
 
   useEffect(() => {
@@ -84,8 +85,11 @@ export function AppStateProvider({ children }) {
   const record = users.find((item) => item.id === session?.id) ?? null;
   const user = record && record.active !== false ? record : null;
 
-  const persist = (nextUser) => {
-    const safe = publicUser(nextUser);
+  const persist = (nextUser, token = null) => {
+    const safeUser = publicUser(nextUser);
+    const safe = safeUser
+      ? { ...safeUser, token: token ?? session?.token ?? null }
+      : null;
     setSession(safe);
     if (safe) localStorage.setItem(SESSION_KEY, JSON.stringify(safe));
     else localStorage.removeItem(SESSION_KEY);
@@ -156,6 +160,7 @@ export function AppStateProvider({ children }) {
     }
 
     const apiUser = remote.user;
+    setPendingToken(remote.token);
     const ready = {
       id: apiUser.id,
       name: apiUser.name,
@@ -222,94 +227,15 @@ export function AppStateProvider({ children }) {
   const logout = () => {
     if (user)
       addAudit({ type: "signout", category: "signins", target: user.email });
+    setPendingToken(null);
     persist(null);
   };
 
-  const register = async ({ name, email, password, role, company, title }) => {
-    const normalised = String(email ?? "")
-      .trim()
-      .toLowerCase();
-
-    if (!name?.trim()) return { ok: false, message: "Enter your full name." };
-
-    if (!normalised.includes("@"))
-      return { ok: false, message: "Enter a valid email address." };
-
-    if (!password || password.length < 8)
-      return {
-        ok: false,
-        message: "Use at least 8 characters for the password.",
-      };
-
-    if (role === "client" && !company?.trim())
-      return { ok: false, message: "Enter the company name." };
-
-    if (role !== "client" && !title?.trim())
-      return { ok: false, message: "Enter your role." };
-
-    const remote = await createPendingAccount({
-      name: name.trim(),
-      email: normalised,
-      role,
-      phone: "",
-      company: company?.trim() ?? "",
-      link: `${window.location.origin}/activate`,
-    });
-
-    if (!remote.ok) {
-      return {
-        ok: false,
-        message: remote.message || "The account could not be created.",
-      };
-    }
-
-    const apiUser = remote.user;
-    const pending = {
-      id: apiUser.id,
-      name: apiUser.name,
-      email: apiUser.email,
-      role: apiUser.role,
-      clientId: apiUser.clientId ?? null,
-      memberId: apiUser.memberId ?? null,
-      phone: apiUser.phone || "",
-      title: apiUser.title || title?.trim() || roleLabel(apiUser.role),
-      active: true,
-      activated: false,
-    };
-
-    setUsers((current) => {
-      const index = current.findIndex(
-        (item) =>
-          item.id === pending.id ||
-          item.email.toLowerCase() === pending.email.toLowerCase(),
-      );
-
-      if (index === -1) return [...current, pending];
-
-      return current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...pending } : item,
-      );
-    });
-
-    addAudit({
-      type: "user_registered",
-      category: "accounts",
-      target: pending.name,
-      detail: [
-        ["Role", "", roleLabel(pending.role)],
-        ["Account", "", "Waiting for activation"],
-      ],
-    });
-
+  const register = async () => {
     return {
-      ok: true,
-      step: "activate",
-      email: pending.email,
-      emailed: remote.emailed,
-      previewCode: remote.previewCode,
-      message: remote.emailed
-        ? `An activation email was sent to ${pending.email}.`
-        : remote.message,
+      ok: false,
+      message:
+        "Accounts are created by an Administrator. Please contact the Administrator to receive an activation invitation.",
     };
   };
 
@@ -341,13 +267,18 @@ export function AppStateProvider({ children }) {
     };
   };
 
-  const cancelOtp = () => setOtpChallenge(null);
+  const cancelOtp = () => {
+    setOtpChallenge(null);
+    setPendingToken(null);
+  };
 
   const verifyOtp = (code) => {
     const result = assessOtp(otpChallenge, code);
     if (!result.ok) {
-      if (result.clear) setOtpChallenge(null);
-      else if (result.attempts)
+      if (result.clear) {
+        setOtpChallenge(null);
+        setPendingToken(null);
+      } else if (result.attempts)
         setOtpChallenge({ ...otpChallenge, attempts: result.attempts });
       return {
         ok: false,
@@ -372,7 +303,8 @@ export function AppStateProvider({ children }) {
         category: "signins",
         target: match.email,
       });
-      persist(match);
+      persist(match, pendingToken);
+      setPendingToken(null);
       return { ok: true, user: publicUser(match) };
     }
 
@@ -1151,79 +1083,60 @@ export function AppStateProvider({ children }) {
       return { ok: true };
     }
 
-    let clientId = null;
-    if (role === "client") {
-      if (!company?.trim())
-        return { ok: false, message: "A client account needs a company name." };
-      clientId = createId("client");
-      setClients((current) => [
-        ...current,
-        {
-          id: clientId,
-          name: company.trim(),
-          contact: name.trim(),
-          email: normalised,
-        },
-      ]);
-    }
-    const next = {
-      id: createId("user"),
-      name: name.trim(),
-      email: normalised,
-      password: "",
-      role,
-      clientId,
-      memberId: null,
-      phone: cleanPhone,
-      title: role === "client" ? company.trim() : roleLabel(role),
-      active: true,
-      activated: false,
-    };
-    if (role === "developer") next.memberId = next.id;
-    const remote = await createPendingAccount({
-      name: next.name,
-      email: normalised,
-      role,
-      phone: cleanPhone,
-      company: company?.trim() ?? "",
-      link: `${window.location.origin}/activate`,
-    });
-    if (!remote.ok && !remote.offline)
-      return { ok: false, message: remote.message };
+    if (role === "client" && !company?.trim())
+      return { ok: false, message: "A client account needs a company name." };
 
-    if (remote.ok) {
-      next.id = remote.user.id;
-      next.clientId = remote.user.clientId;
-      next.memberId = remote.user.memberId;
-      next.title = remote.user.title || next.title;
-      next.signInCodeExpires = Date.now() + 24 * 60 * 60 * 1000;
-      setUsers((current) => [...current, next]);
-      addAudit({
-        type: "user_added",
-        category: "accounts",
-        target: next.name,
-        detail: [
-          ["Role", "", roleLabel(role)],
-          ["Account", "", "Waiting for a password"],
-        ],
-      });
+    const remote = await createPendingAccount(
+      {
+        name: name.trim(),
+        email: normalised,
+        role,
+        phone: cleanPhone,
+        company: company?.trim() ?? "",
+        link: `${window.location.origin}/activate`,
+      },
+      session?.token,
+    );
+
+    if (!remote.ok) {
       return {
-        ok: true,
-        emailed: remote.emailed,
-        previewCode: remote.previewCode,
-        message: remote.emailed
-          ? `An activation email was sent to ${normalised}.`
-          : remote.message,
+        ok: false,
+        message: remote.message || "The account could not be created.",
       };
     }
 
-    const challenge = createOtpChallenge({
-      purpose: "welcome",
-      userId: next.id,
-      email: normalised,
-    });
-    next.signInCode = challenge.code;
-    next.signInCodeExpires = Date.now() + 24 * 60 * 60 * 1000;
+    const next = {
+      id: remote.user.id,
+      name: remote.user.name || name.trim(),
+      email: remote.user.email || normalised,
+      password: "",
+      role: remote.user.role || role,
+      clientId: remote.user.clientId ?? null,
+      memberId: remote.user.memberId ?? null,
+      phone: remote.user.phone || cleanPhone,
+      title:
+        remote.user.title ||
+        (role === "client" ? company.trim() : roleLabel(role)),
+      active: true,
+      activated: false,
+      signInCodeExpires: Date.now() + 24 * 60 * 60 * 1000,
+    };
+
+    if (role === "client" && next.clientId) {
+      setClients((current) => {
+        if (current.some((item) => item.id === next.clientId)) return current;
+        return [
+          ...current,
+          {
+            id: next.clientId,
+            name: company.trim(),
+            contact: next.name,
+            email: next.email,
+          },
+        ];
+      });
+    }
+
     setUsers((current) => [...current, next]);
     addAudit({
       type: "user_added",
@@ -1234,20 +1147,14 @@ export function AppStateProvider({ children }) {
         ["Account", "", "Waiting for a password"],
       ],
     });
-    const delivery = await emailSignInCode({
-      email: normalised,
-      name: next.name,
-      code: challenge.code,
-      purpose: "welcome",
-      link: `${window.location.origin}/activate`,
-    });
+
     return {
       ok: true,
-      emailed: delivery.sent,
-      previewCode: delivery.sent ? null : challenge.code,
-      message: delivery.sent
-        ? `An activation email was sent to ${normalised}. The API is not running, so this account is only on this browser.`
-        : `${delivery.message} The API is not running, so this account is only on this browser.`,
+      emailed: remote.emailed,
+      previewCode: remote.previewCode,
+      message: remote.emailed
+        ? `An activation email was sent to ${normalised}.`
+        : remote.message,
     };
   };
 
@@ -1291,8 +1198,12 @@ export function AppStateProvider({ children }) {
         category: "accounts",
         target: ready.email,
       });
-      persist(ready);
-      return { ok: true, user: publicUser(ready) };
+      persist(null);
+      return {
+        ok: true,
+        user: publicUser(ready),
+        message: "Account activated successfully. Please sign in.",
+      };
     }
     if (!remote.offline && !remote.notFound)
       return { ok: false, message: remote.message };
