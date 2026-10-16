@@ -258,9 +258,9 @@ export function ProjectBrief({ project, audience = 'manager', onNewTask, onUploa
     setRequirementError('')
   }
 
-  const saveMilestone = (event) => {
+  const saveMilestone = async (event) => {
     event.preventDefault()
-    const result = addMilestone(project.id, { name: milestoneName, targetLabel: milestoneDate })
+    const result = await addMilestone(project.id, { name: milestoneName, targetLabel: milestoneDate })
     if (!result.ok) {
       setMilestoneError(result.errors?.name || result.errors?.targetLabel || result.message || 'Check the milestone details.')
       return
@@ -370,8 +370,8 @@ export function ProjectBrief({ project, audience = 'manager', onNewTask, onUploa
                       size="small"
                       variant="secondary"
                       disabled={nudged[task.id]}
-                      onClick={() => {
-                        const result = nudgeClient(project.id, task.id)
+                      onClick={async () => {
+                        const result = await nudgeClient(project.id, task.id)
                         if (result.ok) setNudged((current) => ({ ...current, [task.id]: true }))
                       }}
                     >

@@ -371,25 +371,11 @@ app.MapPost("/api/projects", async (
                 MemberId = member.Id
             });
             member.Allocated = true;
+            await NotifyUsers(db, await DeveloperUserIds(db, member.Id), project.Id, $"You were added to {project.Name}.");
         }
     }
 
-    var clientUsers = await db.Users
-        .Where(user => user.ClientId == project.ClientId && user.Active)
-        .ToListAsync();
-
-    foreach (var clientUser in clientUsers)
-    {
-        db.Notifications.Add(new PortalNotification
-        {
-            Id = Guid.NewGuid().ToString(),
-            UserId = clientUser.Id,
-            ProjectId = project.Id,
-            Text = $"{project.Name} is now visible on your account.",
-            Read = false,
-            CreatedAt = DateTime.UtcNow
-        });
-    }
+    await NotifyUsers(db, await ClientUserIds(db, project.ClientId), project.Id, $"{project.Name} is now visible on your account.");
 
     await db.SaveChangesAsync();
 
@@ -442,17 +428,19 @@ app.MapGet("/api/team-members", async (PortalDbContext db) =>
 
 app.MapGet("/api/notifications", async (ClaimsPrincipal principal, PortalDbContext db) =>
 {
-    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
     if (string.IsNullOrWhiteSpace(userId)) return Results.Unauthorized();
 
     var items = await db.Notifications
         .AsNoTracking()
         .Where(item => item.UserId == userId)
         .OrderByDescending(item => item.CreatedAt)
-        .Take(30)
+        .Take(100)
         .Select(item => new
         {
             item.Id,
+            item.UserId,
             item.Text,
             item.Read,
             item.CreatedAt,
@@ -468,7 +456,8 @@ app.MapPost("/api/notifications/{id}/read", async (
     ClaimsPrincipal principal,
     PortalDbContext db) =>
 {
-    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+        ?? principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
     var notice = await db.Notifications.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
     if (notice == null) return Results.NotFound(new { message = "Notification not found." });
     notice.Read = true;
@@ -491,6 +480,7 @@ app.MapPost("/api/projects/{projectId}/tasks/{taskId}/assign", async (
 
     task.AssigneeId = member.Id;
     await LinkProjectMember(db, project, member);
+    await NotifyUsers(db, await DeveloperUserIds(db, member.Id), project.Id, $"\"{task.Title}\" was assigned to you on {project.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -505,6 +495,8 @@ app.MapPost("/api/projects/{projectId}/tasks/{taskId}/approve", async (
     if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
     task.Status = "done";
     project.Progress = WorkProgress(project.Tasks);
+    await NotifyUsers(db, await DeveloperUserIds(db, task.AssigneeId), project.Id, $"\"{task.Title}\" on {project.Name} was approved.");
+    await NotifyUsers(db, await ClientUserIds(db, project.ClientId), project.Id, $"\"{task.Title}\" on {project.Name} is complete.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -518,26 +510,11 @@ app.MapPost("/api/projects/{projectId}/tasks/{taskId}/remind", async (
     var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
     if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
 
-    var recipients = await db.Users
-        .Where(user => user.ClientId == project.ClientId && user.Active)
-        .ToListAsync();
-
+    var recipients = await ClientUserIds(db, project.ClientId);
     if (recipients.Count == 0)
         return Results.BadRequest(new { message = "This client has no portal login to notify." });
 
-    foreach (var recipient in recipients)
-    {
-        db.Notifications.Add(new PortalNotification
-        {
-            Id = Guid.NewGuid().ToString(),
-            UserId = recipient.Id,
-            ProjectId = project.Id,
-            Text = $"Please review \"{task.Title}\" on {project.Name}.",
-            Read = false,
-            CreatedAt = DateTime.UtcNow
-        });
-    }
-
+    await NotifyUsers(db, recipients, project.Id, $"Please review \"{task.Title}\" on {project.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -563,7 +540,11 @@ app.MapPost("/api/projects/{projectId}/tasks", async (
         AssigneeId = assignee?.Id,
         DueLabel = request.DueLabel?.Trim() ?? ""
     });
-    if (assignee != null) await LinkProjectMember(db, project, assignee);
+    if (assignee != null)
+    {
+        await LinkProjectMember(db, project, assignee);
+        await NotifyUsers(db, await DeveloperUserIds(db, assignee.Id), project.Id, $"\"{request.Title.Trim()}\" was assigned to you on {project.Name}.");
+    }
     project.Progress = WorkProgress(project.Tasks);
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
@@ -575,8 +556,8 @@ app.MapPost("/api/projects/{projectId}/comments", async (
     ClaimsPrincipal principal,
     PortalDbContext db) =>
 {
-    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
-    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == projectId);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
     if (string.IsNullOrWhiteSpace(request.Body)) return Results.BadRequest(new { message = "Write a message first." });
 
     string? replyToId = null;
@@ -600,6 +581,11 @@ app.MapPost("/api/projects/{projectId}/comments", async (
         ReplyToId = replyToId,
         CreatedAt = DateTime.UtcNow
     });
+    var role = principal.FindFirstValue(ClaimTypes.Role);
+    if (string.Equals(role, "client", StringComparison.OrdinalIgnoreCase))
+        await NotifyUsers(db, await ManagerUserIds(db), projectId, $"{name} left feedback on {project.Name}.");
+    else
+        await NotifyUsers(db, await ClientUserIds(db, project.ClientId), projectId, $"{name} left a message on {project.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "client", "developer"));
@@ -633,6 +619,8 @@ app.MapPost("/api/projects/{projectId}/change-requests", async (
         Status = "submitted",
         CreatedAt = DateTime.UtcNow
     });
+    var asker = principal.FindFirstValue(ClaimTypes.Name) ?? "A client";
+    await NotifyUsers(db, await ManagerUserIds(db), projectId, $"{asker} requested a change on \"{task.Title}\" in {project.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
@@ -663,6 +651,8 @@ app.MapPost("/api/projects/{projectId}/files", async (
         Approval = "pending",
         Version = 1
     });
+    var project = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
+    await NotifyUsers(db, await ClientUserIds(db, project.ClientId), projectId, $"A new file was shared on {project.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "developer"));
@@ -681,6 +671,9 @@ app.MapPost("/api/projects/{projectId}/files/{fileId}/decision", async (
     if (request.Status is not ("approved" or "declined"))
         return Results.BadRequest(new { message = "Choose approve or decline." });
     file.Approval = request.Status;
+    var actor = principal.FindFirstValue(ClaimTypes.Name) ?? "A client";
+    var verb = request.Status == "approved" ? "approved" : "declined";
+    await NotifyUsers(db, await ManagerUserIds(db), projectId, $"{actor} {verb} {file.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
@@ -707,6 +700,8 @@ app.MapPost("/api/projects/{projectId}/tasks/{taskId}/status", async (
     if (!allowed.Contains(status)) return Results.BadRequest(new { message = "Choose a valid task status." });
     task.Status = status;
     project.Progress = WorkProgress(project.Tasks);
+    await NotifyUsers(db, await ClientUserIds(db, project.ClientId), project.Id, $"{project.Name} progress was updated.");
+    await NotifyUsers(db, await ManagerUserIds(db), project.Id, $"\"{task.Title}\" on {project.Name} is now {status.Replace("_", " ")}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("developer", "manager", "administrator"));
@@ -727,6 +722,8 @@ app.MapPost("/api/projects/{projectId}/requirements", async (
         Text = request.Text.Trim(),
         Status = "recorded"
     });
+    var requirementProject = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
+    await NotifyUsers(db, await ClientUserIds(db, requirementProject.ClientId), projectId, $"A requirement on {requirementProject.Name} is ready for you to confirm.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -745,6 +742,11 @@ app.MapPost("/api/projects/{projectId}/requirements/{requirementId}", async (
     if (request.Status is not ("confirmed" or "disputed" or "recorded"))
         return Results.BadRequest(new { message = "Choose confirm or dispute." });
     requirement.Status = request.Status;
+    if (request.Status == "disputed")
+    {
+        var requirementProject = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
+        await NotifyUsers(db, await ManagerUserIds(db), projectId, $"A client disputed a requirement on {requirementProject.Name}: {requirement.Text}");
+    }
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
@@ -761,6 +763,7 @@ app.MapPost("/api/projects/{projectId}/change-requests/{requestId}", async (
         return Results.BadRequest(new { message = "Choose approve, reject, or ask for detail." });
 
     change.Status = request.Status;
+    await NotifyUsers(db, await ClientUserIds(db, change.ClientId), projectId, $"Your change request was updated: {request.Status.Replace("_", " ")}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -783,6 +786,8 @@ app.MapPost("/api/projects/{projectId}/milestones", async (
         TargetLabel = request.TargetLabel.Trim(),
         Status = "planned"
     });
+    var milestoneProject = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
+    await NotifyUsers(db, await ClientUserIds(db, milestoneProject.ClientId), projectId, $"A milestone was added on {milestoneProject.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -795,6 +800,8 @@ app.MapPost("/api/projects/{projectId}/milestones/{milestoneId}/complete", async
     var milestone = await db.Milestones.FirstOrDefaultAsync(item => item.Id == milestoneId && item.ProjectId == projectId);
     if (milestone == null) return Results.NotFound(new { message = "Milestone not found." });
     milestone.Status = "complete";
+    var completedProject = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
+    await NotifyUsers(db, await ClientUserIds(db, completedProject.ClientId), projectId, $"{milestone.Name} was marked complete on {completedProject.Name}.");
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -846,6 +853,8 @@ app.MapPost("/api/projects/{projectId}/invoices", async (
     if (string.Equals(request.Status, "draft", StringComparison.OrdinalIgnoreCase))
         invoice.Status = "draft";
     db.Invoices.Add(invoice);
+    if (invoice.Status != "draft")
+        await NotifyUsers(db, await ClientUserIds(db, project.ClientId), project.Id, $"Invoice {invoice.Number} is ready to view.");
     await db.SaveChangesAsync();
     return Results.Ok(new { ok = true, invoice.Id, invoice.Number, invoice.Status });
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -905,6 +914,8 @@ app.MapPost("/api/invoices/{id}/decision", async (
     if (invoice.Status is "paid" or "cancelled" or "draft" or "approved" or "declined")
         return Results.BadRequest(new { message = "This invoice has already been decided." });
     invoice.Status = request.Status;
+    var decider = principal.FindFirstValue(ClaimTypes.Name) ?? "A client";
+    await NotifyUsers(db, await ManagerUserIds(db), invoice.ProjectId, $"{decider} {request.Status} {invoice.Number}.");
     await db.SaveChangesAsync();
     return Results.Ok(new { ok = true, invoice.Id, invoice.Status });
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
@@ -935,6 +946,18 @@ app.MapPost("/api/invoices/{id}/status", async (
                 Amount = item.Amount * (item.Qty <= 0 ? 1 : item.Qty)
             });
         }
+    }
+    if (invoice.Status is "pending" or "paid" or "cancelled")
+    {
+        var text = invoice.Status switch
+        {
+            "paid" => $"Invoice {invoice.Number} was marked as paid.",
+            "cancelled" => $"Invoice {invoice.Number} was cancelled.",
+            _ => $"Invoice {invoice.Number} is ready to view."
+        };
+        await NotifyUsers(db, await ClientUserIds(db, invoice.ClientId), invoice.ProjectId, text);
+        if (invoice.Status == "paid")
+            await NotifyUsers(db, await ManagerUserIds(db), invoice.ProjectId, text);
     }
     await db.SaveChangesAsync();
     return Results.Ok(new { ok = true, invoice.Id, invoice.Number, invoice.Status });
@@ -1212,6 +1235,7 @@ app.MapPost("/api/auth/email-code", async (
 app.MapPost("/api/invoices/payment-reminder", async (
     PaymentReminderRequest request,
     PortalMailer mailer,
+    PortalDbContext db,
     CancellationToken cancellationToken) =>
 {
     var email = request.Email?.Trim() ?? "";
@@ -1241,6 +1265,14 @@ app.MapPost("/api/invoices/payment-reminder", async (
             request.DueLabel?.Trim() ?? "",
             request.Link,
             cancellationToken);
+        var invoice = await db.Invoices.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Number == number, cancellationToken);
+        if (invoice != null)
+        {
+            var due = string.IsNullOrWhiteSpace(request.DueLabel) ? invoice.DueLabel : request.DueLabel.Trim();
+            await NotifyUsers(db, await ClientUserIds(db, invoice.ClientId), invoice.ProjectId, $"Reminder: invoice {invoice.Number} is due {due}.");
+            await db.SaveChangesAsync(cancellationToken);
+        }
         return Results.Ok(new { sent = true, message = "" });
     }
     catch (Exception)
@@ -1977,6 +2009,51 @@ static async Task<List<string>> OwnedClientIds(PortalDbContext db, ClaimsPrincip
     return await db.Clients.AsNoTracking()
         .Where(client => client.Id == clientId || (email != null && client.Email == email))
         .Select(client => client.Id)
+        .ToListAsync();
+}
+
+static async Task NotifyUsers(PortalDbContext db, IEnumerable<string> userIds, string? projectId, string text)
+{
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    foreach (var userId in userIds)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || !seen.Add(userId)) continue;
+        db.Notifications.Add(new PortalNotification
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserId = userId,
+            ProjectId = projectId,
+            Text = text,
+            Read = false,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+    await Task.CompletedTask;
+}
+
+static async Task<List<string>> ClientUserIds(PortalDbContext db, string? clientId)
+{
+    if (string.IsNullOrWhiteSpace(clientId)) return [];
+    var client = await db.Clients.AsNoTracking().FirstOrDefaultAsync(item => item.Id == clientId);
+    var email = string.IsNullOrWhiteSpace(client?.Email) ? null : client.Email.ToLower();
+    return await db.Users.AsNoTracking()
+        .Where(user => user.Active && user.Role == "client" && (user.ClientId == clientId || (email != null && user.Email.ToLower() == email)))
+        .Select(user => user.Id)
+        .ToListAsync();
+}
+
+static async Task<List<string>> ManagerUserIds(PortalDbContext db) =>
+    await db.Users.AsNoTracking()
+        .Where(user => user.Active && user.Role == "manager")
+        .Select(user => user.Id)
+        .ToListAsync();
+
+static async Task<List<string>> DeveloperUserIds(PortalDbContext db, string? memberId)
+{
+    if (string.IsNullOrWhiteSpace(memberId)) return [];
+    return await db.Users.AsNoTracking()
+        .Where(user => user.Active && user.Role == "developer" && (user.MemberId == memberId || user.Id == memberId))
+        .Select(user => user.Id)
         .ToListAsync();
 }
 

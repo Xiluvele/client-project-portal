@@ -4,8 +4,9 @@ import '../api/portal_api.dart';
 
 class AuditTrailScreen extends StatefulWidget {
   final String token;
+  final bool embedded;
 
-  const AuditTrailScreen({super.key, required this.token});
+  const AuditTrailScreen({super.key, required this.token, this.embedded = false});
 
   @override
   State<AuditTrailScreen> createState() => _AuditTrailScreenState();
@@ -90,16 +91,14 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: black,
-      appBar: AppBar(
-        backgroundColor: black,
-        foregroundColor: Colors.white,
-        title: const Text('Audit trail'),
-      ),
-      body: Column(
+    final content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.embedded)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(22, 16, 22, 4),
+              child: Text('Audit trail', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            ),
           const Padding(
             padding: EdgeInsets.fromLTRB(22, 8, 22, 12),
             child: Text(
@@ -184,7 +183,18 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                           ),
           ),
         ],
+      );
+    if (widget.embedded) {
+      return ColoredBox(color: black, child: SafeArea(child: content));
+    }
+    return Scaffold(
+      backgroundColor: black,
+      appBar: AppBar(
+        backgroundColor: black,
+        foregroundColor: Colors.white,
+        title: const Text('Audit trail'),
       ),
+      body: content,
     );
   }
 }
