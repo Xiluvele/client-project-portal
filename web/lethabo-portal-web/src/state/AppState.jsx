@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppStateContext } from "./useAppState";
 import { teamMembers, cloneSeed } from "../data/seed";
 import { createId } from "../lib/format";
+import { PORTAL_URL } from "../lib/api";
 import { activateRemote, createPendingAccount } from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
 import { emailSignInCode } from "../lib/mailCode";
@@ -15,8 +16,35 @@ import {
 } from "../lib/invoiceDates";
 
 const SESSION_KEY = "lethabo-connect-session";
-const USERS_KEY = "lethabo-connect-users";
-const CLIENTS_KEY = "lethabo-connect-clients";
+const USERS_KEY = "lethabo-connect-users-v2";
+const CLIENTS_KEY = "lethabo-connect-clients-v2";
+const DROP_FLAG = "lethabo-connect-drop-readd-v2";
+const DROPPED_EMAILS = new Set([
+  "xiluvelotalin@gmail.com",
+  "thabedenokubonga5@gmail.com",
+  "galarisima986@gmail.com",
+  "nompumelelononhlanhla18@gmail.com",
+]);
+
+let dropStoredAccounts = null;
+
+function shouldDropStoredAccounts() {
+  if (dropStoredAccounts !== null) return dropStoredAccounts;
+  try {
+    dropStoredAccounts = localStorage.getItem(DROP_FLAG) !== "1";
+    if (dropStoredAccounts) localStorage.setItem(DROP_FLAG, "1");
+  } catch {
+    dropStoredAccounts = false;
+  }
+  return dropStoredAccounts;
+}
+
+function withoutDroppedAccounts(list, drop) {
+  if (!drop) return list;
+  return list.filter(
+    (item) => !DROPPED_EMAILS.has(String(item?.email ?? "").toLowerCase()),
+  );
+}
 
 function readStored(key, fallback) {
   try {
@@ -59,9 +87,17 @@ function publicUser(user) {
 
 export function AppStateProvider({ children }) {
   const seed = useMemo(() => cloneSeed(), []);
-  const [users, setUsers] = useState(() => readStored(USERS_KEY, seed.users));
+  const [users, setUsers] = useState(() =>
+    withoutDroppedAccounts(
+      readStored(USERS_KEY, seed.users),
+      shouldDropStoredAccounts(),
+    ),
+  );
   const [clients, setClients] = useState(() =>
-    readStored(CLIENTS_KEY, seed.clients),
+    withoutDroppedAccounts(
+      readStored(CLIENTS_KEY, seed.clients),
+      shouldDropStoredAccounts(),
+    ),
   );
   const [projects, setProjects] = useState(seed.projects);
   const [invoices, setInvoices] = useState(seed.invoices);
@@ -69,10 +105,39 @@ export function AppStateProvider({ children }) {
   const [changeRequests, setChangeRequests] = useState(seed.changeRequests);
   const [requirements, setRequirements] = useState(seed.requirements);
   const [notifications, setNotifications] = useState(seed.notifications);
-  const [session, setSession] = useState(() => readSession());
+  const [session, setSession] = useState(() => {
+    const saved = readSession();
+    if (
+      shouldDropStoredAccounts() &&
+      DROPPED_EMAILS.has(String(saved?.email ?? "").toLowerCase())
+    ) {
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        /* The stored sign-in can stay if storage is unavailable. */
+      }
+      return null;
+    }
+    return saved;
+  });
   const [otpChallenge, setOtpChallenge] = useState(null);
   const [pendingToken, setPendingToken] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
+
+  useEffect(() => {
+    if (!shouldDropStoredAccounts()) return;
+    setUsers((current) => withoutDroppedAccounts(current, true));
+    setClients((current) => withoutDroppedAccounts(current, true));
+    setSession((current) => {
+      if (!DROPPED_EMAILS.has(String(current?.email ?? "").toLowerCase())) return current;
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        /* The stored sign-in can stay if storage is unavailable. */
+      }
+      return null;
+    });
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -1093,7 +1158,7 @@ export function AppStateProvider({ children }) {
         role,
         phone: cleanPhone,
         company: company?.trim() ?? "",
-        link: `${window.location.origin}/activate`,
+        link: `${PORTAL_URL}/activate`,
       },
       session?.token,
     );
@@ -1147,7 +1212,6 @@ export function AppStateProvider({ children }) {
         ["Account", "", "Waiting for a password"],
       ],
     });
-
     return {
       ok: true,
       emailed: remote.emailed,

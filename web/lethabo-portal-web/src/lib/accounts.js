@@ -1,6 +1,4 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL ??
-  "https://lethabo-portal-api-g6dzc3gphwbsameu.southafricanorth-01.azurewebsites.net";
+import { API_BASE } from "./api";
 
 // ------------------------------------------------------------
 // POST helper

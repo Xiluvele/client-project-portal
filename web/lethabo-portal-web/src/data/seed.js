@@ -22,7 +22,6 @@ export const clients = [
 ]
 
 export const users = [
-  { id: 'user-nompumelelo', name: 'Nompumelelo Mncwango', email: 'nompumelelononhlanhla18@gmail.com', password: 'Connect@123', role: 'administrator', title: 'Administrator', active: true, activated: true },
   { id: 'user-admin', name: 'Boitumelo Sithole', email: 'admin@lethabom.co.za', password: 'connect123', role: 'administrator', title: 'Administrator', active: true, activated: true },
   { id: 'user-nk', name: 'Naledi Khumalo', email: 'naledi@lethabom.co.za', password: 'connect123', role: 'manager', memberId: 'nk', title: 'Project Manager', active: true },
   { id: 'user-sipho', name: 'Sipho Dlamini', email: 'sipho@lethabom.co.za', password: 'connect123', role: 'developer', memberId: 'sd', title: 'Software Developer', active: true },

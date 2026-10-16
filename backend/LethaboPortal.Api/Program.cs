@@ -106,7 +106,6 @@ if (!PortalConnectionString.HasPassword(connectionString))
         "dotnet user-secrets set \"PortalDb:Password\" \"<password>\"");
 }
 
-
 // ============================================================
 // OPENAPI
 // ============================================================
@@ -578,6 +577,7 @@ app.MapPost("/api/accounts", async (
     CreateAccountRequest request,
     PortalDbContext db,
     PortalMailer mailer,
+    IConfiguration configuration,
     CancellationToken cancellationToken) =>
 {
     var name = request.Name?.Trim() ?? "";
@@ -642,7 +642,7 @@ app.MapPost("/api/accounts", async (
     {
         try
         {
-            await mailer.SendCodeAsync(email, name, code, "welcome", request.Link, cancellationToken);
+            await mailer.SendCodeAsync(email, name, code, "welcome", ActivationLink(configuration, request.Link), cancellationToken);
             emailed = true;
         }
         catch (Exception)
@@ -811,6 +811,19 @@ static string CreateJwtToken(
 }
 
 static string NewId(string prefix) => $"{prefix}-{Guid.NewGuid().ToString("N")[..10]}";
+
+static string ActivationLink(IConfiguration configuration, string? link)
+{
+    var hosted = (configuration["Portal:PublicUrl"] ?? "https://client-project-portal-a28c.onrender.com").TrimEnd('/');
+    if (string.IsNullOrWhiteSpace(link) ||
+        link.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
+        link.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"{hosted}/activate";
+    }
+
+    return link;
+}
 
 static string RoleTitle(string role) => role switch
 {
