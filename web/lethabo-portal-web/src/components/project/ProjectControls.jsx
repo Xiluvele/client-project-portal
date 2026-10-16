@@ -26,12 +26,12 @@ export function MilestonePanel({ project }) {
     setErrors({})
   }
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
     const wasEditing = Boolean(editingId)
     const result = wasEditing
       ? updateMilestone(project.id, editingId, { name, targetLabel })
-      : addMilestone(project.id, { name, targetLabel })
+      : await addMilestone(project.id, { name, targetLabel })
     if (!result.ok) {
       setErrors(result.errors ?? {})
       setMessage(result.message || '')

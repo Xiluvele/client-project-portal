@@ -41,7 +41,7 @@ const LINKS = {
 }
 
 function NotificationBell({ to }) {
-  const { user, notifications, markNotificationRead } = useAppState()
+  const { user, notifications, markNotificationRead, refreshNotifications } = useAppState()
   const [open, setOpen] = useState(false)
   const panel = useRef(null)
   const mine = notifications.filter((item) => item.userId === user?.id)
@@ -58,7 +58,7 @@ function NotificationBell({ to }) {
 
   return (
     <div className="bell" ref={panel}>
-      <button className="bell__button" type="button" aria-label={unread ? `Notifications, ${unread} new` : 'Notifications'} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button className="bell__button" type="button" aria-label={unread ? `Notifications, ${unread} new` : 'Notifications'} aria-expanded={open} onClick={() => { setOpen((value) => !value); refreshNotifications?.() }}>
         <Icon name="bell" />
         {unread ? <span className="bell__count">{unread}</span> : null}
       </button>

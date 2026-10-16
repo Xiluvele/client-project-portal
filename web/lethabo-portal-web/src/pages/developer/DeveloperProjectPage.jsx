@@ -9,7 +9,6 @@ import { Card } from '../../components/ui/Card'
 import { TextField } from '../../components/ui/Fields'
 import { Modal } from '../../components/ui/Modal'
 import { StatusBadge } from '../../components/ui/StatusBadge'
-import { ActivityHistory } from '../../components/project/ProjectControls'
 import { CommentThread, FileList, FilePreview } from '../../components/project/ProjectWidgets'
 import { useAppState } from '../../state/useAppState'
 
@@ -113,9 +112,6 @@ export function DeveloperProjectPage() {
           <div className="section-head"><h2>Comments</h2></div>
           <CommentThread project={project} />
         </Card>
-      </div>
-      <div className="split">
-        <ActivityHistory projectId={project.id} />
       </div>
       <Modal title={requestPreview?.name || 'Preview'} open={Boolean(requestPreview)} onClose={() => setRequestPreview(null)}>
         <div className="preview-stage">

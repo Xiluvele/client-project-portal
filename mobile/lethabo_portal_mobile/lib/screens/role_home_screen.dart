@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/portal_api.dart';
 import '../project_access.dart';
+import 'messages_screen.dart';
 import 'projects/projects_details_screen.dart';
 
 class RoleHomeScreen extends StatefulWidget {
@@ -141,6 +142,26 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
     });
   }
 
+  void _openMessages() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: black,
+          appBar: AppBar(backgroundColor: black, foregroundColor: Colors.white),
+          body: MessagesScreen(
+            token: widget.token,
+            role: widget.role,
+            clientId: widget.clientId,
+            memberId: widget.memberId,
+            userId: widget.userId,
+            email: widget.email,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _open(Map<String, dynamic> project) async {
     await Navigator.push(
       context,
@@ -167,7 +188,17 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
             : ListView(
                 padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
                 children: [
-                  Text('$_greeting, $_firstName', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('$_greeting, $_firstName', style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                      ),
+                      IconButton(
+                        onPressed: _openMessages,
+                        icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 6),
                   Text(
                     _isClient ? 'Your projects and where each one stands.' : 'Projects assigned to you.',

@@ -170,6 +170,26 @@ export function mapInvoice(raw) {
   };
 }
 
+export async function listNotifications(token) {
+  try {
+    const { response, payload } = await send("/api/notifications", token);
+    if (!response.ok || !Array.isArray(payload)) return { ok: false, notifications: [] };
+    return {
+      ok: true,
+      notifications: payload.map((item) => ({
+        id: field(item, "id", "Id"),
+        userId: field(item, "userId", "UserId"),
+        projectId: field(item, "projectId", "ProjectId") || null,
+        text: field(item, "text", "Text"),
+        read: Boolean(item.read ?? item.Read),
+        createdAt: field(item, "createdAt", "CreatedAt"),
+      })).filter((item) => item.id),
+    };
+  } catch {
+    return { ok: false, notifications: [] };
+  }
+}
+
 export async function listInvoices(token) {
   try {
     const { response, payload } = await send("/api/invoices", token);

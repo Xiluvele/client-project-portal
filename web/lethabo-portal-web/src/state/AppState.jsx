@@ -6,7 +6,7 @@ import { PORTAL_URL } from "../lib/api";
 import { activateRemote, createPendingAccount, directoryMembers, listAccounts, listClients, listMembers, setAccountStatus, updateAccount } from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
 import { emailPaymentReminder, emailSignInCode } from "../lib/mailCode";
-import { assignRemoteTask, createRemoteProject, createRemoteTask, listInvoices, listProjects, postProjectAction } from "../lib/projects";
+import { assignRemoteTask, createRemoteProject, createRemoteTask, listInvoices, listNotifications, listProjects, postProjectAction } from "../lib/projects";
 import { assessOtp, createOtpChallenge } from "../lib/otp";
 import { roleLabel } from "../lib/roles";
 import {
@@ -88,7 +88,7 @@ export function AppStateProvider({ children }) {
   const [activities, setActivities] = useState(seed.activities);
   const [changeRequests, setChangeRequests] = useState([]);
   const [requirements, setRequirements] = useState([]);
-  const [notifications, setNotifications] = useState(seed.notifications);
+  const [notifications, setNotifications] = useState([]);
   const [session, setSession] = useState(() => {
     const saved = readSession();
     if (
@@ -138,19 +138,42 @@ export function AppStateProvider({ children }) {
 
   const refreshProjects = useCallback(async (token) => {
     if (!token) return;
-    const [result, bills] = await Promise.all([listProjects(token), listInvoices(token)]);
+    const [result, bills, notes] = await Promise.all([
+      listProjects(token),
+      listInvoices(token),
+      listNotifications(token),
+    ]);
     if (result.ok) {
       setProjects(result.projects);
       setChangeRequests(result.projects.flatMap((project) => project.changeRequests ?? []));
       setRequirements(result.projects.flatMap((project) => project.requirements ?? []));
     }
     if (bills.ok) setInvoices(bills.invoices);
+    if (notes.ok) setNotifications(notes.notifications);
+  }, []);
+
+  const refreshNotifications = useCallback(async (token) => {
+    if (!token) return;
+    const notes = await listNotifications(token);
+    if (notes.ok) setNotifications(notes.notifications);
   }, []);
 
   useEffect(() => {
     refreshPeople(session?.token);
     refreshProjects(session?.token);
   }, [refreshPeople, refreshProjects, session?.token]);
+
+  useEffect(() => {
+    if (!session?.token) return undefined;
+    const token = session.token;
+    const timer = window.setInterval(() => refreshNotifications(token), 20000);
+    const onFocus = () => refreshNotifications(token);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshNotifications, session?.token]);
 
   const record = users.find((item) => item.id === session?.id) ?? session;
   const user = record && record.active !== false ? record : null;
@@ -424,15 +447,23 @@ export function AppStateProvider({ children }) {
   }, []);
 
   const notify = (userIds, text, projectId) => {
-    const rows = [...new Set(userIds.filter(Boolean))].map((userId) => ({
-      id: createId("note"),
-      userId,
-      projectId,
-      text,
-      read: false,
-      createdAt: new Date().toISOString(),
-    }));
-    if (rows.length) setNotifications((current) => [...rows, ...current]);
+    if (!user?.id || !userIds.includes(user.id)) return;
+    setNotifications((current) => {
+      if (current.some((item) => item.userId === user.id && item.text === text && item.projectId === projectId)) {
+        return current;
+      }
+      return [
+        {
+          id: createId("note"),
+          userId: user.id,
+          projectId,
+          text,
+          read: false,
+          createdAt: new Date().toISOString(),
+        },
+        ...current,
+      ];
+    });
   };
 
   const clientUserIds = (clientId) =>
@@ -653,18 +684,17 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const nudgeClient = (projectId, taskId) => {
+  const nudgeClient = async (projectId, taskId) => {
     const project = projects.find((item) => item.id === projectId);
     const task = project?.tasks.find((item) => item.id === taskId);
-    const recipients = clientUserIds(project?.clientId);
-    if (!task || !recipients.length) {
-      return { ok: false, message: "This client has no portal login to notify." };
-    }
-    notify(
-      recipients,
-      `Please review “${task.title}” on ${project.name}.`,
-      projectId,
+    if (!task) return { ok: false, message: "That task could not be found." };
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/tasks/${taskId}/remind`,
+      session?.token,
+      {},
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(projectId, `Client nudged about ${task.title}`);
     return { ok: true };
   };
@@ -1032,7 +1062,7 @@ export function AppStateProvider({ children }) {
     return { ok: true, message: `A payment reminder was emailed to ${email}.` };
   };
 
-  const addMilestone = (projectId, { name, targetLabel }) => {
+  const addMilestone = async (projectId, { name, targetLabel }) => {
     const errors = {};
     if (!name?.trim()) errors.name = "Enter a milestone name.";
     if (!targetLabel?.trim()) errors.targetLabel = "Enter a target date.";
@@ -1043,25 +1073,14 @@ export function AppStateProvider({ children }) {
         ok: false,
         message: "Open a project before adding a milestone.",
       };
-    const milestone = {
-      id: createId("mile"),
-      name: name.trim(),
-      targetLabel: targetLabel.trim(),
-      status: "planned",
-    };
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === projectId
-          ? { ...item, milestones: [...(item.milestones ?? []), milestone] }
-          : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/milestones`,
+      session?.token,
+      { name: name.trim(), targetLabel: targetLabel.trim() },
     );
-    addActivity(projectId, `Milestone added: ${milestone.name}`);
-    notify(
-      clientUserIds(project.clientId),
-      `${milestone.name} was added to the ${project.name} timeline.`,
-      projectId,
-    );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
+    addActivity(projectId, `Milestone added: ${name.trim()}`);
     return { ok: true };
   };
 
@@ -1101,20 +1120,18 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const completeMilestone = (projectId, milestoneId) => {
-    let label = "Milestone";
-    setProjects((current) =>
-      current.map((project) => {
-        if (project.id !== projectId) return project;
-        const milestones = (project.milestones ?? []).map((item) => {
-          if (item.id !== milestoneId) return item;
-          label = item.name;
-          return { ...item, status: "complete" };
-        });
-        return { ...project, milestones };
-      }),
+  const completeMilestone = async (projectId, milestoneId) => {
+    const project = projects.find((item) => item.id === projectId);
+    const label = project?.milestones?.find((item) => item.id === milestoneId)?.name ?? "Milestone";
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/milestones/${milestoneId}/complete`,
+      session?.token,
+      {},
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(projectId, `${label} marked complete`);
+    return { ok: true };
   };
 
   const addRequirement = async (projectId, text) => {
@@ -1521,12 +1538,15 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const markNotificationRead = (notificationId) => {
+  const markNotificationRead = async (notificationId) => {
     setNotifications((current) =>
       current.map((item) =>
         item.id === notificationId ? { ...item, read: true } : item,
       ),
     );
+    if (session?.token) {
+      await postProjectAction(`/api/notifications/${notificationId}/read`, session.token, {});
+    }
   };
 
   const value = {
@@ -1540,6 +1560,7 @@ export function AppStateProvider({ children }) {
     changeRequests,
     requirements,
     notifications,
+    refreshNotifications: () => refreshNotifications(session?.token),
     auditLog,
     addAudit,
     members,
