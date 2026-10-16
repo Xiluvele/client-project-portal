@@ -16,8 +16,10 @@ export function mapAccount(raw) {
     memberId: readField(raw, "memberId", "MemberId", null),
     title: readField(raw, "title", "Title"),
     phone: readField(raw, "phone", "Phone", ""),
+    company: readField(raw, "company", "Company", ""),
     active: readField(raw, "active", "Active", true) !== false,
     activated: readField(raw, "activated", "Activated", true) !== false,
+    hasAccount: readField(raw, "hasAccount", "HasAccount", true) !== false,
   };
 }
 
@@ -207,6 +209,29 @@ export async function createPendingAccount(payload, token) {
 // Activation remains public because a newly invited user does
 // not have a JWT until they have activated their account and
 // signed in.
+export async function updateAccount(id, payload, token) {
+  try {
+    const response = await fetch(`${API_BASE}/api/accounts/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 409) {
+      return { ok: false, message: body.message || "Another user already has this email." };
+    }
+    if (!response.ok || body.ok === false) {
+      return { ok: false, message: body.message || "The account could not be updated." };
+    }
+    return { ok: true, user: body.user ? mapAccount(body.user) : null };
+  } catch {
+    return { ok: false, message: "The server could not be reached. The account was not updated." };
+  }
+}
+
 export async function setAccountStatus(id, active, token) {
   try {
     const { response, body } = await post(`/api/accounts/${id}/status`, { active }, token);

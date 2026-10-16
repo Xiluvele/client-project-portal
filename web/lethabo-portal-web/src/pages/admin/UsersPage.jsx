@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
-import { SelectField, TextField } from '../../components/ui/Fields'
+import { SearchField, SelectField, TextField } from '../../components/ui/Fields'
 import { Modal } from '../../components/ui/Modal'
 import { StatusBadge } from '../../components/ui/StatusBadge'
 import { roleLabel } from '../../lib/roles'
@@ -33,7 +33,7 @@ function validate(form, users) {
   else if (users.some((u) => u.id !== form.id && (u.email || '').toLowerCase() === email))
     errors.email = 'Another user already has this email.'
 
-  if (form.role === 'client' && !form.id && !form.company.trim()) errors.company = 'Enter the client company.'
+  if (form.role === 'client' && !form.company.trim()) errors.company = 'Enter the client company.'
 
   const digits = form.phone.replace(/\D/g, '')
   if (form.phone && (digits.length < 9 || digits.length > 15 || /[^\d\s+\-()]/.test(form.phone)))
@@ -82,8 +82,41 @@ function FieldError({ message }) {
   return message ? <p className="field-error" role="alert">{message}</p> : null
 }
 
+function peopleRows(users, clients) {
+  const byId = new Map(clients.map((client) => [client.id, client]))
+  const byEmail = new Map(clients.map((client) => [String(client.email || '').toLowerCase(), client]))
+  const used = new Set()
+  const rows = users.map((user) => {
+    const client = (user.clientId && byId.get(user.clientId)) || byEmail.get(String(user.email || '').toLowerCase())
+    if (client) used.add(client.id)
+    return {
+      ...user,
+      company: user.company || client?.name || (user.role === 'client' ? user.title : ''),
+      hasAccount: user.hasAccount !== false,
+    }
+  })
+  clients.forEach((client) => {
+    if (used.has(client.id)) return
+    const email = String(client.email || '').toLowerCase()
+    if (rows.some((row) => String(row.email || '').toLowerCase() === email)) return
+    rows.push({
+      id: client.id,
+      name: client.contact || client.name,
+      email: client.email,
+      role: 'client',
+      company: client.name,
+      phone: '',
+      clientId: client.id,
+      active: true,
+      activated: false,
+      hasAccount: false,
+    })
+  })
+  return rows.sort((left, right) => left.name.localeCompare(right.name))
+}
+
 export function UsersPage() {
-  const { users, saveAccount, setAccountActive } = useAppState()
+  const { users, clients, saveAccount, setAccountActive } = useAppState()
   const [form, setForm] = useState(emptyForm)
   const [open, setOpen] = useState(false)
   const [viewing, setViewing] = useState(null)
@@ -91,6 +124,7 @@ export function UsersPage() {
   const [error, setError] = useState('')
   const [errors, setErrors] = useState({})
   const [notice, setNotice] = useState('')
+  const [query, setQuery] = useState('')
 
   const openAdd = () => {
     setForm(emptyForm)
@@ -107,7 +141,7 @@ export function UsersPage() {
       role: account.role,
       phone: account.phone || '',
       password: '',
-      company: '',
+      company: account.company || '',
     })
     setError('')
     setErrors({})
@@ -118,7 +152,7 @@ export function UsersPage() {
 
   const submit = async (event) => {
     event.preventDefault()
-    const found = validate(form, users)
+    const found = validate(form, rows)
     setErrors(found)
     if (Object.keys(found).length) return
 
@@ -135,15 +169,20 @@ export function UsersPage() {
     if (!form.id && result.emailed) {
       setNotice(`An activation email was sent to ${form.email.trim()}. They open the link, enter the code, and choose a password.`)
     } else if (!form.id && result.previewCode) {
-      setNotice(`The account was saved, but the email did not send. ${result.message} Activation code: ${result.previewCode}. They open Activate account from the sign-in page.`)
+      setNotice(`The account was saved, but the email did not send. ${result.message} Activation code: ${result.previewCode}.`)
     }
     setOpen(false)
   }
 
   // Always show the latest data for the user being viewed
-  const viewed = viewing ? users.find((u) => u.id === viewing) : null
+  const rows = peopleRows(users, clients)
+  const needle = query.trim().toLowerCase()
+  const visible = needle
+    ? rows.filter((account) => `${account.name} ${account.email} ${account.role} ${account.company || ''}`.toLowerCase().includes(needle))
+    : rows
+  const viewed = viewing ? rows.find((u) => u.id === viewing) : null
   const viewedInactive = viewed?.active === false
-  const toConfirm = confirming ? users.find((u) => u.id === confirming) : null
+  const toConfirm = confirming ? rows.find((u) => u.id === confirming) : null
 
   const toggleAccount = async (account) => {
     if (account.active === false) {
@@ -158,8 +197,13 @@ export function UsersPage() {
     <>
       <PageIntro
         title="Team & Access"
-        subtitle="View details, add people, and activate or deactivate who can sign in. A duplicate email is rejected."
-        actions={<Button onClick={openAdd}>Add user</Button>}
+        subtitle="Users and clients from the database. Search by name, email, role, or company."
+        actions={(
+          <>
+            <SearchField value={query} onChange={setQuery} placeholder="Search users and clients" />
+            <Button onClick={openAdd}>Add user</Button>
+          </>
+        )}
       />
       {notice ? <p className="notice" role="status">{notice}</p> : null}
       {error && !open ? <p className="notice" role="alert">{error}</p> : null}
@@ -171,17 +215,18 @@ export function UsersPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Role</th>
+                <th>Company</th>
                 <th>Account</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.length === 0 ? (
+              {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No accounts are stored in the database yet.</td>
+                  <td colSpan={6}>{rows.length === 0 ? 'No accounts are stored in the database yet.' : 'No people match this search.'}</td>
                 </tr>
               ) : null}
-              {users.map((account) => {
+              {visible.map((account) => {
                 const inactive = account.active === false
                 const waiting = account.activated === false && !inactive
                 return (
@@ -192,10 +237,11 @@ export function UsersPage() {
                     </td>
                     <td>{account.email}</td>
                     <td>{roleLabel(account.role)}</td>
+                    <td>{account.company || '—'}</td>
                     <td>
                       <StatusBadge
                         status={inactive ? 'cancelled' : waiting ? 'pending' : 'confirmed'}
-                        label={inactive ? 'Deactivated' : waiting ? 'Needs password' : 'Active'}
+                        label={!account.hasAccount ? 'Client record' : inactive ? 'Deactivated' : waiting ? 'Needs password' : 'Active'}
                       />
                     </td>
                     <td>
@@ -209,15 +255,17 @@ export function UsersPage() {
                         >
                           <ViewIcon />
                         </button>
-                        <button
-                          className={`icon-btn ${inactive ? 'icon-btn--ok' : 'icon-btn--danger'}`}
-                          type="button"
-                          title={inactive ? 'Activate: allow sign-in again' : 'Deactivate: block sign-in'}
-                          aria-label={inactive ? `Activate ${account.name}` : `Deactivate ${account.name}`}
-                          onClick={() => toggleAccount(account)}
-                        >
-                          {inactive ? <ActivateIcon /> : <DeactivateIcon />}
-                        </button>
+                        {account.hasAccount ? (
+                          <button
+                            className={`icon-btn ${inactive ? 'icon-btn--ok' : 'icon-btn--danger'}`}
+                            type="button"
+                            title={inactive ? 'Activate: allow sign-in again' : 'Deactivate: block sign-in'}
+                            aria-label={inactive ? `Activate ${account.name}` : `Deactivate ${account.name}`}
+                            onClick={() => toggleAccount(account)}
+                          >
+                            {inactive ? <ActivateIcon /> : <DeactivateIcon />}
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -235,6 +283,7 @@ export function UsersPage() {
               <div><dt>Full name</dt><dd>{viewed.name}</dd></div>
               <div><dt>Email</dt><dd>{viewed.email}</dd></div>
               <div><dt>Role</dt><dd>{roleLabel(viewed.role)}</dd></div>
+              <div><dt>Company</dt><dd>{viewed.company || '—'}</dd></div>
               <div><dt>Phone</dt><dd>{viewed.phone || '—'}</dd></div>
               <div>
                 <dt>Account</dt>
@@ -246,9 +295,13 @@ export function UsersPage() {
                 </dd>
               </div>
             </dl>
-            <Button onClick={() => { const account = viewed; setViewing(null); edit(account) }}>
-              Edit user
-            </Button>
+            {viewed.hasAccount ? (
+              <Button onClick={() => { const account = viewed; setViewing(null); edit(account) }}>
+                Edit user
+              </Button>
+            ) : (
+              <p className="quiet">This company is stored as a client. Add a user with this email to give them a sign-in.</p>
+            )}
           </div>
         ) : null}
       </Modal>
@@ -289,7 +342,7 @@ export function UsersPage() {
           </SelectField>
           <p className="quiet">{ROLE_HINTS[form.role]}</p>
 
-          {form.role === 'client' && !form.id ? (
+          {form.role === 'client' ? (
             <>
               <TextField label="Company" value={form.company} onChange={set('company')} />
               <FieldError message={errors.company} />

@@ -201,6 +201,7 @@ app.MapGet("/api/projects", async (PortalDbContext db) =>
 {
     var projects = await db.Projects
         .AsNoTracking()
+        .AsSplitQuery()
         .Include(p => p.Client)
         .Select(p => new
         {
@@ -222,12 +223,77 @@ app.MapGet("/api/projects", async (PortalDbContext db) =>
             p.DueLabel,
             p.DueThisWeek,
             p.Progress,
-            MemberIds = p.Members.Select(member => member.MemberId)
+            MemberIds = p.Members.Select(member => member.MemberId),
+            Tasks = p.Tasks.Select(task => new
+            {
+                task.Id,
+                task.Title,
+                task.Description,
+                task.Type,
+                task.Status,
+                task.AssigneeId,
+                task.DueLabel
+            }),
+            Files = p.Files.Select(file => new
+            {
+                file.Id,
+                file.Name,
+                file.Kind,
+                file.Description,
+                file.PreviewUrl,
+                file.UploadedBy,
+                file.CreatedAt,
+                file.Approval,
+                file.Version
+            }),
+            Comments = p.Comments.Select(comment => new
+            {
+                comment.Id,
+                comment.AuthorName,
+                comment.Initials,
+                comment.Role,
+                comment.Body,
+                comment.ReplyToId,
+                comment.CreatedAt
+            }),
+            Milestones = p.Milestones.Select(milestone => new
+            {
+                milestone.Id,
+                milestone.Name,
+                milestone.TargetLabel,
+                milestone.Status
+            }),
+            ChangeRequests = db.ChangeRequests
+                .Where(change => change.ProjectId == p.Id)
+                .Select(change => new
+                {
+                    change.Id,
+                    change.ProjectId,
+                    change.ClientId,
+                    change.TaskId,
+                    change.Description,
+                    change.Status,
+                    change.CreatedAt,
+                    change.AttachmentName,
+                    change.AttachmentKind,
+                    change.AttachmentPreviewUrl
+                })
+                .ToList(),
+            Requirements = db.Requirements
+                .Where(requirement => requirement.ProjectId == p.Id)
+                .Select(requirement => new
+                {
+                    requirement.Id,
+                    requirement.ProjectId,
+                    requirement.Text,
+                    requirement.Status
+                })
+                .ToList()
         })
         .ToListAsync();
 
     return Results.Ok(projects);
-});
+}).RequireAuthorization();
 
 
 // ------------------------------------------------------------
@@ -297,7 +363,7 @@ app.MapPost("/api/projects", async (
     {
         foreach (var memberId in request.MemberIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct())
         {
-            var member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == memberId);
+            var member = await ResolveTeamMember(db, memberId);
             if (member == null) continue;
             db.ProjectMembers.Add(new ProjectMember
             {
@@ -420,17 +486,11 @@ app.MapPost("/api/projects/{projectId}/tasks/{taskId}/assign", async (
     var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
     if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
 
-    var member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == request.AssigneeId);
-    if (member == null)
-    {
-        var developer = await db.Users.FirstOrDefaultAsync(item => item.Id == request.AssigneeId);
-        if (!string.IsNullOrWhiteSpace(developer?.MemberId))
-            member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == developer.MemberId);
-    }
-
+    var member = await ResolveTeamMember(db, request.AssigneeId);
     if (member == null) return Results.BadRequest(new { message = "Choose a developer." });
 
     task.AssigneeId = member.Id;
+    await LinkProjectMember(db, project, member);
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
@@ -491,15 +551,19 @@ app.MapPost("/api/projects/{projectId}/tasks", async (
     if (project == null) return Results.NotFound(new { message = "Project not found." });
     if (string.IsNullOrWhiteSpace(request.Title)) return Results.BadRequest(new { message = "Enter a task title." });
 
+    var assignee = await ResolveTeamMember(db, request.AssigneeId);
     project.Tasks.Add(new WorkItem
     {
         Id = Guid.NewGuid().ToString(),
         ProjectId = project.Id,
         Title = request.Title.Trim(),
+        Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
         Type = "task",
         Status = "backlog",
-        DueLabel = ""
+        AssigneeId = assignee?.Id,
+        DueLabel = request.DueLabel?.Trim() ?? ""
     });
+    if (assignee != null) await LinkProjectMember(db, project, assignee);
     project.Progress = WorkProgress(project.Tasks);
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
@@ -583,12 +647,17 @@ app.MapPost("/api/projects/{projectId}/files", async (
     if (!exists) return Results.NotFound(new { message = "Project not found." });
     if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { message = "Enter a file name." });
 
+    if ((request.PreviewUrl?.Length ?? 0) > 500_000)
+        return Results.BadRequest(new { message = "That file is too large to store." });
+
     db.ProjectFiles.Add(new ProjectFile
     {
         Id = Guid.NewGuid().ToString(),
         ProjectId = projectId,
         Name = request.Name.Trim(),
-        Kind = "file",
+        Kind = string.IsNullOrWhiteSpace(request.Kind) ? "file" : request.Kind.Trim(),
+        Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+        PreviewUrl = string.IsNullOrWhiteSpace(request.PreviewUrl) ? null : request.PreviewUrl,
         UploadedBy = principal.FindFirstValue(ClaimTypes.Name) ?? "Project manager",
         CreatedAt = DateTime.UtcNow,
         Approval = "pending",
@@ -596,7 +665,51 @@ app.MapPost("/api/projects/{projectId}/files", async (
     });
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
-}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "developer"));
+
+app.MapPost("/api/projects/{projectId}/files/{fileId}/decision", async (
+    string projectId,
+    string fileId,
+    DecideRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var file = await db.ProjectFiles.FirstOrDefaultAsync(item => item.Id == fileId && item.ProjectId == projectId);
+    var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == projectId);
+    if (file == null || project == null) return Results.NotFound(new { message = "File not found." });
+    if (!await OwnsClient(db, principal, project.ClientId)) return Results.Forbid();
+    if (request.Status is not ("approved" or "declined"))
+        return Results.BadRequest(new { message = "Choose approve or decline." });
+    file.Approval = request.Status;
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/tasks/{taskId}/status", async (
+    string projectId,
+    string taskId,
+    DecideRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
+    if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
+    if (string.Equals(principal.FindFirstValue(ClaimTypes.Role), "developer", StringComparison.OrdinalIgnoreCase))
+    {
+        var memberId = principal.FindFirstValue("memberId");
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (task.AssigneeId != memberId && task.AssigneeId != userId)
+            return Results.Forbid();
+    }
+    var allowed = new[] { "backlog", "in_progress", "in_review", "done" };
+    var status = request.Status?.Trim().ToLowerInvariant() ?? "";
+    if (!allowed.Contains(status)) return Results.BadRequest(new { message = "Choose a valid task status." });
+    task.Status = status;
+    project.Progress = WorkProgress(project.Tasks);
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("developer", "manager", "administrator"));
 
 app.MapPost("/api/projects/{projectId}/requirements", async (
     string projectId,
@@ -618,6 +731,24 @@ app.MapPost("/api/projects/{projectId}/requirements", async (
     return await ProjectWorkspace(db, projectId);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
+app.MapPost("/api/projects/{projectId}/requirements/{requirementId}", async (
+    string projectId,
+    string requirementId,
+    DecideRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var requirement = await db.Requirements.FirstOrDefaultAsync(item => item.Id == requirementId && item.ProjectId == projectId);
+    var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == projectId);
+    if (requirement == null || project == null) return Results.NotFound(new { message = "Requirement not found." });
+    if (!await OwnsClient(db, principal, project.ClientId)) return Results.Forbid();
+    if (request.Status is not ("confirmed" or "disputed" or "recorded"))
+        return Results.BadRequest(new { message = "Choose confirm or dispute." });
+    requirement.Status = request.Status;
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
+
 app.MapPost("/api/projects/{projectId}/change-requests/{requestId}", async (
     string projectId,
     string requestId,
@@ -626,8 +757,8 @@ app.MapPost("/api/projects/{projectId}/change-requests/{requestId}", async (
 {
     var change = await db.ChangeRequests.FirstOrDefaultAsync(item => item.Id == requestId && item.ProjectId == projectId);
     if (change == null) return Results.NotFound(new { message = "Change request not found." });
-    if (request.Status is not ("approved" or "rejected"))
-        return Results.BadRequest(new { message = "Choose approve or reject." });
+    if (request.Status is not ("approved" or "rejected" or "clarification"))
+        return Results.BadRequest(new { message = "Choose approve, reject, or ask for detail." });
 
     change.Status = request.Status;
     await db.SaveChangesAsync();
@@ -689,15 +820,135 @@ app.MapPost("/api/projects/{projectId}/invoices", async (
         IssuedLabel = ShortDate(DateTime.UtcNow),
         DueLabel = string.IsNullOrWhiteSpace(request.DueLabel) ? ShortDate(DateTime.UtcNow.AddDays(14)) : request.DueLabel.Trim()
     };
-    invoice.Lines.Add(new InvoiceLine
+    var lines = request.Items?.Where(item => item.Amount > 0).ToList();
+    if (lines is { Count: > 0 })
     {
-        Id = Guid.NewGuid().ToString(),
-        Description = invoice.Title,
-        Amount = request.Amount
-    });
+        foreach (var item in lines)
+        {
+            invoice.Lines.Add(new InvoiceLine
+            {
+                Id = Guid.NewGuid().ToString(),
+                Description = string.IsNullOrWhiteSpace(item.Description) ? invoice.Title : item.Description.Trim(),
+                Amount = item.Amount * (item.Qty <= 0 ? 1 : item.Qty)
+            });
+        }
+    }
+    else
+    {
+        invoice.Lines.Add(new InvoiceLine
+        {
+            Id = Guid.NewGuid().ToString(),
+            Description = invoice.Title,
+            Amount = request.Amount
+        });
+    }
+
+    if (string.Equals(request.Status, "draft", StringComparison.OrdinalIgnoreCase))
+        invoice.Status = "draft";
     db.Invoices.Add(invoice);
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return Results.Ok(new { ok = true, invoice.Id, invoice.Number, invoice.Status });
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapGet("/api/invoices", async (ClaimsPrincipal principal, PortalDbContext db) =>
+{
+    var role = principal.FindFirstValue(ClaimTypes.Role) ?? "";
+    var query = db.Invoices.AsNoTracking().Include(item => item.Lines).AsQueryable();
+    if (role == "client")
+    {
+        var ownedIds = await OwnedClientIds(db, principal);
+        query = query.Where(item => ownedIds.Contains(item.ClientId) && item.Status != "draft");
+    }
+    else if (role == "developer")
+    {
+        var memberId = principal.FindFirstValue("memberId");
+        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        var memberProjects = await db.ProjectMembers.AsNoTracking()
+            .Where(item => item.MemberId == memberId || item.MemberId == userId)
+            .Select(item => item.ProjectId)
+            .ToListAsync();
+        var assignedProjects = await db.WorkItems.AsNoTracking()
+            .Where(item => item.AssigneeId == memberId || item.AssigneeId == userId)
+            .Select(item => item.ProjectId)
+            .ToListAsync();
+        var visible = memberProjects.Concat(assignedProjects).Distinct().ToList();
+        query = query.Where(item => visible.Contains(item.ProjectId) && item.Status != "draft");
+    }
+
+    var invoices = await query.OrderByDescending(item => item.Number).ToListAsync();
+    return Results.Ok(invoices.Select(item => new
+    {
+        item.Id,
+        item.Number,
+        item.ClientId,
+        item.ProjectId,
+        item.Title,
+        item.Status,
+        item.IssuedLabel,
+        item.DueLabel,
+        Items = item.Lines.Select(line => new { line.Id, line.Description, Qty = 1, Amount = line.Amount })
+    }));
+}).RequireAuthorization();
+
+app.MapPost("/api/invoices/{id}/decision", async (
+    string id,
+    DecideRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var invoice = await db.Invoices.FirstOrDefaultAsync(item => item.Id == id);
+    if (invoice == null) return Results.NotFound(new { message = "Invoice not found." });
+    if (!await OwnsClient(db, principal, invoice.ClientId))
+        return Results.Forbid();
+    if (request.Status is not ("approved" or "declined"))
+        return Results.BadRequest(new { message = "Choose approve or decline." });
+    if (invoice.Status is "paid" or "cancelled" or "draft" or "approved" or "declined")
+        return Results.BadRequest(new { message = "This invoice has already been decided." });
+    invoice.Status = request.Status;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { ok = true, invoice.Id, invoice.Status });
+}).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
+
+app.MapPost("/api/invoices/{id}/status", async (
+    string id,
+    InvoiceStatusRequest request,
+    PortalDbContext db) =>
+{
+    var invoice = await db.Invoices.Include(item => item.Lines).FirstOrDefaultAsync(item => item.Id == id);
+    if (invoice == null) return Results.NotFound(new { message = "Invoice not found." });
+    var status = request.Status?.Trim().ToLowerInvariant() ?? "";
+    var allowed = new[] { "draft", "sent", "pending", "paid", "cancelled" };
+    if (!allowed.Contains(status)) return Results.BadRequest(new { message = "Choose a valid invoice status." });
+    invoice.Status = status == "sent" ? "pending" : status;
+    if (!string.IsNullOrWhiteSpace(request.Title)) invoice.Title = request.Title.Trim();
+    if (!string.IsNullOrWhiteSpace(request.DueLabel)) invoice.DueLabel = request.DueLabel.Trim();
+    var lines = request.Items?.Where(item => item.Amount > 0).ToList();
+    if (lines is { Count: > 0 })
+    {
+        db.InvoiceLines.RemoveRange(invoice.Lines.ToList());
+        foreach (var item in lines)
+        {
+            invoice.Lines.Add(new InvoiceLine
+            {
+                Id = Guid.NewGuid().ToString(),
+                Description = string.IsNullOrWhiteSpace(item.Description) ? invoice.Title : item.Description.Trim(),
+                Amount = item.Amount * (item.Qty <= 0 ? 1 : item.Qty)
+            });
+        }
+    }
+    await db.SaveChangesAsync();
+    return Results.Ok(new { ok = true, invoice.Id, invoice.Number, invoice.Status });
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapDelete("/api/invoices/{id}", async (string id, PortalDbContext db) =>
+{
+    var invoice = await db.Invoices.Include(item => item.Lines).FirstOrDefaultAsync(item => item.Id == id);
+    if (invoice == null) return Results.NotFound(new { message = "Invoice not found." });
+    if (invoice.Status != "draft") return Results.BadRequest(new { message = "Only draft invoices can be deleted." });
+    db.InvoiceLines.RemoveRange(invoice.Lines);
+    db.Invoices.Remove(invoice);
+    await db.SaveChangesAsync();
+    return Results.Ok(new { ok = true });
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
 
@@ -1152,26 +1403,175 @@ app.MapGet("/api/audit", async (
 
 app.MapGet("/api/accounts", async (PortalDbContext db, CancellationToken cancellationToken) =>
 {
-    var users = await db.Users
-        .AsNoTracking()
-        .OrderBy(item => item.Name)
-        .Select(item => new
-        {
-            item.Id,
-            item.Name,
-            item.Email,
-            item.Role,
-            item.ClientId,
-            item.MemberId,
-            item.Title,
-            item.Phone,
-            item.Active,
-            item.Activated
-        })
-        .ToListAsync(cancellationToken);
+    var users = await db.Users.AsNoTracking().ToListAsync(cancellationToken);
+    var clients = await db.Clients.AsNoTracking().ToListAsync(cancellationToken);
+    var clientsById = clients.ToDictionary(item => item.Id);
+    var usedClientIds = new HashSet<string>();
 
-    return Results.Ok(users);
+    var rows = users
+        .OrderBy(item => item.Name)
+        .Select(item =>
+        {
+            clientsById.TryGetValue(item.ClientId ?? "", out var linked);
+            var client = linked ?? clients.FirstOrDefault(entry =>
+                entry.Email.Equals(item.Email, StringComparison.OrdinalIgnoreCase));
+            if (client != null) usedClientIds.Add(client.Id);
+            return new AccountListItem(
+                item.Id,
+                item.Name,
+                item.Email,
+                item.Role,
+                item.ClientId,
+                item.MemberId,
+                item.Title,
+                item.Phone,
+                item.Active,
+                item.Activated,
+                client?.Name ?? "",
+                true);
+        })
+        .ToList();
+
+    foreach (var client in clients.Where(item => !usedClientIds.Contains(item.Id)).OrderBy(item => item.Name))
+    {
+        rows.Add(new AccountListItem(
+            client.Id,
+            string.IsNullOrWhiteSpace(client.Contact) ? client.Name : client.Contact,
+            client.Email,
+            "client",
+            client.Id,
+            null,
+            client.Name,
+            null,
+            true,
+            false,
+            client.Name,
+            false));
+    }
+
+    return Results.Ok(rows.OrderBy(item => item.Name).ToList());
 }).RequireAuthorization(policy => policy.RequireRole("administrator", "manager"));
+
+app.MapPut("/api/accounts/{id}", async (
+    string id,
+    UpdateAccountRequest request,
+    PortalDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    var name = request.Name?.Trim() ?? "";
+    var email = request.Email?.Trim().ToLowerInvariant() ?? "";
+    var role = request.Role?.Trim().ToLowerInvariant() ?? "";
+    var company = request.Company?.Trim() ?? "";
+    var roles = new[] { "administrator", "manager", "developer", "client" };
+    if (name.Length < 2 || !email.Contains('@') || !roles.Contains(role))
+    {
+        return Results.BadRequest(new { ok = false, message = "Name, a valid email, and a role are required." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+    if (user == null)
+    {
+        return Results.NotFound(new { ok = false, message = "That user could not be found." });
+    }
+
+    var taken = await db.Users.AnyAsync(
+        item => item.Id != id && item.Email.ToLower() == email,
+        cancellationToken);
+    if (taken)
+    {
+        return Results.Json(new { ok = false, message = "Another user already has this email." }, statusCode: StatusCodes.Status409Conflict);
+    }
+
+    if (role == "client" && company.Length == 0)
+    {
+        return Results.BadRequest(new { ok = false, message = "A client account needs a company name." });
+    }
+
+    user.Name = name;
+    user.Email = email;
+    user.Role = role;
+    user.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+
+    if (role == "client")
+    {
+        ClientAccount? client = null;
+        if (!string.IsNullOrWhiteSpace(user.ClientId))
+        {
+            client = await db.Clients.FirstOrDefaultAsync(item => item.Id == user.ClientId, cancellationToken);
+        }
+
+        client ??= await db.Clients.FirstOrDefaultAsync(
+            item => item.Email.ToLower() == email,
+            cancellationToken);
+
+        if (client == null)
+        {
+            client = new ClientAccount
+            {
+                Id = NewId("client"),
+                Name = company,
+                Contact = name,
+                Email = email,
+            };
+            db.Clients.Add(client);
+        }
+        else
+        {
+            client.Name = company;
+            client.Contact = name;
+            client.Email = email;
+        }
+
+        user.ClientId = client.Id;
+        user.Title = company;
+    }
+    else
+    {
+        user.Title = RoleTitle(role);
+        if (role is "developer" or "manager" && string.IsNullOrWhiteSpace(user.MemberId))
+        {
+            var member = await db.TeamMembers.FirstOrDefaultAsync(
+                item => item.Email.ToLower() == email,
+                cancellationToken);
+            if (member == null)
+            {
+                member = new TeamMember
+                {
+                    Id = NewId("member"),
+                    Name = name,
+                    ShortName = ShortName(name),
+                    Role = RoleTitle(role),
+                    Initials = PersonInitials(name),
+                    Email = email,
+                    Allocated = false,
+                };
+                db.TeamMembers.Add(member);
+            }
+
+            user.MemberId = member.Id;
+        }
+    }
+
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Ok(new
+    {
+        ok = true,
+        user = new
+        {
+            user.Id,
+            user.Name,
+            user.Email,
+            user.Role,
+            user.ClientId,
+            user.MemberId,
+            user.Title,
+            user.Phone,
+            user.Active,
+            user.Activated,
+            company
+        }
+    });
+}).RequireAuthorization(policy => policy.RequireRole("administrator"));
 
 app.MapPost("/api/accounts/{id}/status", async (
     string id,
@@ -1425,6 +1825,51 @@ await using (var scope =
 
 app.Run();
 
+static async Task<TeamMember?> ResolveTeamMember(PortalDbContext db, string? rawId)
+{
+    var id = rawId?.Trim() ?? "";
+    if (id.Length == 0) return null;
+
+    var member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == id);
+    if (member != null) return member;
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Id == id || item.MemberId == id);
+    if (user == null) return null;
+
+    if (!string.IsNullOrWhiteSpace(user.MemberId))
+    {
+        member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == user.MemberId);
+        if (member != null) return member;
+    }
+
+    member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Email.ToLower() == user.Email.ToLower());
+    if (member == null)
+    {
+        member = new TeamMember
+        {
+            Id = string.IsNullOrWhiteSpace(user.MemberId) ? user.Id : user.MemberId,
+            Name = user.Name,
+            ShortName = ShortName(user.Name),
+            Role = RoleTitle(user.Role),
+            Initials = PersonInitials(user.Name),
+            Email = user.Email,
+            Allocated = false,
+        };
+        db.TeamMembers.Add(member);
+    }
+
+    user.MemberId = member.Id;
+    return member;
+}
+
+static async Task LinkProjectMember(PortalDbContext db, PortalProject project, TeamMember member)
+{
+    var linked = await db.ProjectMembers.AnyAsync(item => item.ProjectId == project.Id && item.MemberId == member.Id);
+    if (linked) return;
+    db.ProjectMembers.Add(new ProjectMember { ProjectId = project.Id, MemberId = member.Id });
+    member.Allocated = true;
+}
+
 static string CreateJwtToken(
     PortalUser user,
     string jwtKey,
@@ -1524,6 +1969,25 @@ static string RoleTitle(string role) => role switch
 };
 
 static string ShortDate(DateTime date) => date.ToString("dd MMM", CultureInfo.InvariantCulture);
+
+static async Task<List<string>> OwnedClientIds(PortalDbContext db, ClaimsPrincipal principal)
+{
+    var clientId = principal.FindFirstValue("clientId");
+    var email = principal.FindFirstValue(ClaimTypes.Email);
+    return await db.Clients.AsNoTracking()
+        .Where(client => client.Id == clientId || (email != null && client.Email == email))
+        .Select(client => client.Id)
+        .ToListAsync();
+}
+
+static async Task<bool> OwnsClient(PortalDbContext db, ClaimsPrincipal principal, string? recordClientId)
+{
+    if (!string.Equals(principal.FindFirstValue(ClaimTypes.Role), "client", StringComparison.OrdinalIgnoreCase))
+        return true;
+    if (string.IsNullOrWhiteSpace(recordClientId)) return false;
+    var owned = await OwnedClientIds(db, principal);
+    return owned.Contains(recordClientId);
+}
 
 static string PersonInitials(string name)
 {
@@ -1667,14 +2131,16 @@ public record CreateProjectRequest(
 );
 
 public record AssignTaskRequest(string? AssigneeId);
-public record NewTaskRequest(string? Title);
+public record NewTaskRequest(string? Title, string? Description, string? DueLabel, string? AssigneeId);
 public record NewCommentRequest(string? Body, string? ReplyToId);
 public record NewChangeRequest(string? TaskId, string? Description, string? AttachmentName, string? AttachmentKind, string? AttachmentPreviewUrl);
-public record NewFileRequest(string? Name);
+public record NewFileRequest(string? Name, string? Kind, string? Description, string? PreviewUrl);
 public record NewRequirementRequest(string? Text);
 public record DecideRequest(string? Status);
 public record NewMilestoneRequest(string? Name, string? TargetLabel);
-public record NewInvoiceRequest(string? Title, decimal Amount, string? DueLabel);
+public record InvoiceItemRequest(string? Description, decimal Amount, int Qty = 1);
+public record NewInvoiceRequest(string? Title, decimal Amount, string? DueLabel, string? Status, InvoiceItemRequest[]? Items);
+public record InvoiceStatusRequest(string? Status, string? Title, string? DueLabel, InvoiceItemRequest[]? Items);
 
 
 // ------------------------------------------------------------
@@ -1710,7 +2176,29 @@ public record EmailCodeRequest(
     string? Link
 );
 
+public record AccountListItem(
+    string Id,
+    string Name,
+    string Email,
+    string Role,
+    string? ClientId,
+    string? MemberId,
+    string Title,
+    string? Phone,
+    bool Active,
+    bool Activated,
+    string Company,
+    bool HasAccount);
+
 public record AccountStatusRequest(bool Active);
+
+public record UpdateAccountRequest(
+    string Name,
+    string Email,
+    string Role,
+    string? Phone,
+    string? Company
+);
 
 public record CreateAccountRequest(
     string Name,

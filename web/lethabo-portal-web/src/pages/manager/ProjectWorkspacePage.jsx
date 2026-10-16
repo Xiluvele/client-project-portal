@@ -52,19 +52,23 @@ export function ProjectWorkspacePage() {
     }
   }
 
-  const submitFile = (event) => {
+  const submitFile = async (event) => {
     event.preventDefault()
     if (!preview?.name) {
       setUploadError('Choose a document or photo first.')
       return
     }
     const data = new FormData(event.currentTarget)
-    addFile(project.id, {
+    const result = await addFile(project.id, {
       name: preview.name,
       kind: preview.kind,
       description: data.get('description'),
       previewUrl: preview.previewUrl,
     })
+    if (result && result.ok === false) {
+      setUploadError(result.message)
+      return
+    }
     closeUpload()
   }
 

@@ -6,7 +6,7 @@ import { useAppState } from '../../state/useAppState'
 export function ClientDashboardPage() {
   const { user, clients, members, projects } = useAppState()
   const client = clients.find((item) => item.id === user?.clientId) ?? clients.find((item) => item.email?.toLowerCase() === user?.email?.toLowerCase())
-  const mine = projectsForSignedInClient(projects, user)
+  const mine = projectsForSignedInClient(projects, user, clients)
 
   return (
     <ProjectDirectory

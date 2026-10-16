@@ -75,12 +75,15 @@ class _AddUserScreenState extends State<AddUserScreen> {
     }
 
     final emailed = result.map['emailed'] == true;
-    _message(
-      emailed
-          ? 'An activation email was sent to ${_email.text.trim()}.'
-          : result.message,
-    );
-    Navigator.pop(context);
+    final preview = result.map['previewCode']?.toString() ?? '';
+    final note = emailed
+        ? 'An activation email was sent to ${_email.text.trim()}.'
+        : preview.isNotEmpty
+            ? '${result.message} Activation code: $preview.'
+            : (result.message.isEmpty
+                ? 'The account was saved, but the email was not sent.'
+                : result.message);
+    Navigator.pop(context, note);
   }
 
   void _message(String text) {

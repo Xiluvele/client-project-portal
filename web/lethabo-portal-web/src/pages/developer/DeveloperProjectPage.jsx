@@ -16,7 +16,11 @@ import { useAppState } from '../../state/useAppState'
 export function DeveloperProjectPage() {
   const { projectId } = useParams()
   const { user, projects, clients, addFile, changeRequests } = useAppState()
-  const project = projects.find((item) => item.id === projectId && (item.memberIds.includes(user?.memberId) || item.tasks.some((task) => task.assigneeId === user?.memberId)))
+  const ids = [user?.memberId, user?.id].filter(Boolean)
+  const project = projects.find((item) => item.id === projectId && (
+    ids.some((id) => (item.memberIds ?? []).includes(id))
+    || (item.tasks ?? []).some((task) => ids.includes(task.assigneeId))
+  ))
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(null)
   const [uploadError, setUploadError] = useState('')
@@ -48,19 +52,23 @@ export function DeveloperProjectPage() {
     }
   }
 
-  const submitFile = (event) => {
+  const submitFile = async (event) => {
     event.preventDefault()
     if (!preview?.name) {
       setUploadError('Choose a document or photo first.')
       return
     }
     const data = new FormData(event.currentTarget)
-    addFile(project.id, {
+    const result = await addFile(project.id, {
       name: preview.name,
       kind: preview.kind,
       description: data.get('description'),
       previewUrl: preview.previewUrl,
     })
+    if (result && result.ok === false) {
+      setUploadError(result.message)
+      return
+    }
     closeUpload()
   }
 

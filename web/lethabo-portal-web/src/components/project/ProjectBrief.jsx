@@ -202,9 +202,9 @@ export function ProjectBrief({ project, audience = 'manager', onNewTask, onUploa
     setChangeTaskId((current) => (current === taskId ? null : taskId))
   }
 
-  const sendChange = (event) => {
+  const sendChange = async (event) => {
     event.preventDefault()
-    const result = submitChangeRequest(project.id, changeTaskId, change, changeAttachment)
+    const result = await submitChangeRequest(project.id, changeTaskId, change, changeAttachment)
     if (!result.ok) {
       setChangeError(result.message)
       return
@@ -247,9 +247,9 @@ export function ProjectBrief({ project, audience = 'manager', onNewTask, onUploa
     setMessage('')
   }
 
-  const saveRequirement = (event) => {
+  const saveRequirement = async (event) => {
     event.preventDefault()
-    const result = addRequirement(project.id, requirement)
+    const result = await addRequirement(project.id, requirement)
     if (!result.ok) {
       setRequirementError(result.message)
       return

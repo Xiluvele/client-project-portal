@@ -5,7 +5,7 @@ import { useAppState } from '../../state/useAppState'
 
 export function DeveloperProjectsPage() {
   const { user, clients, members, projects } = useAppState()
-  const mine = projectsForMember(projects, user?.memberId)
+  const mine = projectsForMember(projects, user?.memberId, user?.id)
 
   return (
     <ProjectDirectory

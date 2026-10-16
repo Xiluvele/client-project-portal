@@ -161,9 +161,9 @@ export function ChangeRequestPanel({ project, canSubmit = false, canDecide = fal
     if (fileInput.current) fileInput.current.value = ''
   }
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
-    const result = submitChangeRequest(project.id, taskId, description, attachment)
+    const result = await submitChangeRequest(project.id, taskId, description, attachment)
     if (!result.ok) {
       setError(result.message)
       return

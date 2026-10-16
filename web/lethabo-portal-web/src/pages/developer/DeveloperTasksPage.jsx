@@ -8,7 +8,7 @@ import { useAppState } from '../../state/useAppState'
 export function DeveloperTasksPage() {
   const { user, projects, clients, moveTask } = useAppState()
   const tasks = projects.flatMap((project) => project.tasks
-    .filter((task) => task.assigneeId && task.assigneeId === user?.memberId)
+    .filter((task) => task.assigneeId && (task.assigneeId === user?.memberId || task.assigneeId === user?.id))
     .map((task) => ({ ...task, project })))
 
   return (

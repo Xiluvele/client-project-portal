@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import '../api/portal_api.dart';
-import 'activate_screen.dart';
 import 'forgot_password_screen.dart';
 import 'sign_in_code_screen.dart';
 
@@ -390,26 +389,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                ),
-              ),
-
-              Center(
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ActivateScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Activate account',
-                    style: TextStyle(
-                      color: yellow,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
                 ),
               ),
 

@@ -14,7 +14,7 @@ export function invoiceTotal(invoice) {
   return (invoice.items ?? []).reduce((sum, item) => sum + Number(item.qty ?? 1) * Number(item.amount || 0), 0)
 }
 
-const isOpen = (invoice) => ['sent', 'overdue'].includes(effectiveStatus(invoice))
+const isOpen = (invoice) => ['sent', 'overdue', 'approved'].includes(effectiveStatus(invoice))
 const totalOf = (list) => list.reduce((sum, invoice) => sum + invoiceTotal(invoice), 0)
 
 export function clientById(clients, clientId) {
@@ -29,22 +29,35 @@ export function projectsForClient(projects, clientId) {
   return projects.filter((project) => project.clientId === clientId)
 }
 
-export function projectsForMember(projects, memberId) {
-  if (!memberId) return []
+export function projectsForMember(projects, memberId, userId) {
+  const ids = [memberId, userId].filter(Boolean)
+  if (!ids.length) return []
   return projects.filter((project) =>
-    (project.memberIds ?? []).includes(memberId)
-    || (project.tasks ?? []).some((task) => task.assigneeId === memberId),
+    ids.some((id) => (project.memberIds ?? []).includes(id))
+    || (project.tasks ?? []).some((task) => ids.includes(task.assigneeId)),
   )
 }
 
-export function projectsForSignedInClient(projects, user) {
+export function projectsForSignedInClient(projects, user, clients = []) {
   if (!user) return []
-  return projectsForClient(projects, user.clientId)
+  const ids = new Set()
+  if (user.clientId) ids.add(user.clientId)
+  const email = String(user.email ?? '').toLowerCase()
+  clients.forEach((client) => {
+    if (email && String(client.email ?? '').toLowerCase() === email) ids.add(client.id)
+  })
+  return projects.filter((project) => ids.has(project.clientId))
 }
 
 // Clients never see drafts
-export function invoicesForClient(invoices, clientId) {
-  return invoices.filter((invoice) => invoice.clientId === clientId && invoice.status !== 'draft')
+export function invoicesForClient(invoices, clientId, clients = [], email = '') {
+  const ids = new Set()
+  if (clientId) ids.add(clientId)
+  const normalised = String(email ?? '').toLowerCase()
+  clients.forEach((client) => {
+    if (normalised && String(client.email ?? '').toLowerCase() === normalised) ids.add(client.id)
+  })
+  return invoices.filter((invoice) => ids.has(invoice.clientId) && invoice.status !== 'draft')
 }
 
 export function unreadClientComments(projects, clientId) {

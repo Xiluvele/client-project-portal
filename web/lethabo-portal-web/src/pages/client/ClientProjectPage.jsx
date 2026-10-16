@@ -7,8 +7,8 @@ import { useAppState } from '../../state/useAppState'
 
 export function ClientProjectPage() {
   const { projectId } = useParams()
-  const { user, projects } = useAppState()
-  const project = projectsForSignedInClient(projects, user).find((item) => item.id === projectId)
+  const { user, projects, clients } = useAppState()
+  const project = projectsForSignedInClient(projects, user, clients).find((item) => item.id === projectId)
 
   if (!project) {
     return <PageIntro title="Project not available" subtitle="This project is not on your account." actions={<Link to="/client/dashboard">Back to dashboard</Link>} />

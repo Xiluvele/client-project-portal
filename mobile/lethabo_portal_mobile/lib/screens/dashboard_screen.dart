@@ -94,6 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         role: widget.role,
         clientId: widget.clientId,
         memberId: widget.memberId,
+        userId: widget.userId,
         token: widget.token,
       );
     }
@@ -212,12 +213,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   icon: Icons.person_add_alt_1_rounded,
                   title: 'Add user',
                   subtitle: 'Send an activation email. Only an administrator can do this.',
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    final note = await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => AddUserScreen(token: widget.token),
                       ),
+                    );
+                    if (!mounted || note is! String || note.isEmpty) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(note), backgroundColor: cardColor),
                     );
                   },
                 ),

@@ -106,6 +106,12 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
       setState(() => _project = result.map);
       return;
     }
+    if (result.ok) {
+      final fresh = await PortalApi.get('/api/projects/${widget.projectId}', token: widget.token);
+      if (!mounted) return;
+      if (fresh.ok && fresh.map.isNotEmpty) setState(() => _project = fresh.map);
+      return;
+    }
     _toast(result.message);
   }
 
@@ -220,7 +226,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
     final tasks = _list('tasks');
     final files = _list('files');
     final comments = _list('comments');
-    final invoices = _list('invoices');
+    final invoices = _list('invoices').where((item) => !_isClient || _invoiceStatus(item) != 'draft').toList();
     final requests = _list('changeRequests');
     final openRequests = requests.where((item) => openDecisions.contains(item['status'])).toList();
     final requirements = _list('requirements');
@@ -336,10 +342,14 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           meta: '${file['uploadedBy'] ?? ''} · ${_relative(file['createdAt']?.toString())}',
                           actions: [
                             if ('${file['previewUrl'] ?? ''}'.isNotEmpty) _textButton('Preview', () => _preview(file)),
-                            _badge(file['approval'] == 'pending' ? 'Awaiting client' : '${file['approval'] ?? ''}', file['approval'] == 'approved'),
+                            if (_isClient && file['approval'] == 'pending') ...[
+                              _textButton('Approve', () => _act('/api/projects/${widget.projectId}/files/${file['id']}/decision', {'status': 'approved'})),
+                              _textButton('Decline', () => _act('/api/projects/${widget.projectId}/files/${file['id']}/decision', {'status': 'declined'})),
+                            ] else
+                              _badge(file['approval'] == 'pending' ? 'Awaiting client' : '${file['approval'] ?? ''}', file['approval'] == 'approved'),
                           ],
                         ),
-                      if (_canManage) _textButton('Upload file', _addFile),
+                      if (_canManage || _isDeveloper) _textButton('Upload file', _addFile),
                     ],
                   ),
                 ),
@@ -387,7 +397,11 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           meta: _invoiceStatus(invoice) == 'paid' ? 'Paid ${invoice['issuedLabel'] ?? ''}' : 'Due ${invoice['dueLabel'] ?? ''}',
                           actions: [
                             Text(_money(invoice['total']), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            _badge(_invoiceStatus(invoice), _invoiceStatus(invoice) == 'paid'),
+                            if (_isClient && {'sent', 'overdue', 'pending'}.contains(_invoiceStatus(invoice))) ...[
+                              _textButton('Approve', () => _act('/api/invoices/${invoice['id']}/decision', {'status': 'approved'})),
+                              _textButton('Decline', () => _act('/api/invoices/${invoice['id']}/decision', {'status': 'declined'})),
+                            ] else
+                              _badge(_invoiceStatus(invoice), _invoiceStatus(invoice) == 'paid'),
                           ],
                         ),
                       if (_canManage) _textButton('Create invoice', _addInvoice),
@@ -715,6 +729,10 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
           ),
         if (_canManage && task['status'] == 'in_review')
           _textButton('Approve', () => _act('/api/projects/${widget.projectId}/tasks/$id/approve')),
+        if (_isDeveloper && task['status'] == 'backlog')
+          _textButton('Start', () => _act('/api/projects/${widget.projectId}/tasks/$id/status', {'status': 'in_progress'})),
+        if (_isDeveloper && task['status'] == 'in_progress')
+          _textButton('Send to review', () => _act('/api/projects/${widget.projectId}/tasks/$id/status', {'status': 'in_review'})),
         _badge(laneLabel['${task['status']}'] ?? '${task['status']}', task['status'] == 'done'),
       ],
     );

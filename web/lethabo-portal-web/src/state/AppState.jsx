@@ -3,9 +3,10 @@ import { AppStateContext } from "./useAppState";
 import { cloneSeed } from "../data/seed";
 import { createId, formatRand } from "../lib/format";
 import { PORTAL_URL } from "../lib/api";
-import { activateRemote, createPendingAccount, directoryMembers, listAccounts, listClients, listMembers, setAccountStatus } from "../lib/accounts";
+import { activateRemote, createPendingAccount, directoryMembers, listAccounts, listClients, listMembers, setAccountStatus, updateAccount } from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
 import { emailPaymentReminder, emailSignInCode } from "../lib/mailCode";
+import { assignRemoteTask, createRemoteProject, createRemoteTask, listInvoices, listProjects, postProjectAction } from "../lib/projects";
 import { assessOtp, createOtpChallenge } from "../lib/otp";
 import { roleLabel } from "../lib/roles";
 import {
@@ -82,11 +83,11 @@ export function AppStateProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [clients, setClients] = useState([]);
   const [members, setMembers] = useState([]);
-  const [projects, setProjects] = useState(seed.projects);
-  const [invoices, setInvoices] = useState(seed.invoices);
+  const [projects, setProjects] = useState([]);
+  const [invoices, setInvoices] = useState([]);
   const [activities, setActivities] = useState(seed.activities);
-  const [changeRequests, setChangeRequests] = useState(seed.changeRequests);
-  const [requirements, setRequirements] = useState(seed.requirements);
+  const [changeRequests, setChangeRequests] = useState([]);
+  const [requirements, setRequirements] = useState([]);
   const [notifications, setNotifications] = useState(seed.notifications);
   const [session, setSession] = useState(() => {
     const saved = readSession();
@@ -135,9 +136,21 @@ export function AppStateProvider({ children }) {
     }
   }, []);
 
+  const refreshProjects = useCallback(async (token) => {
+    if (!token) return;
+    const [result, bills] = await Promise.all([listProjects(token), listInvoices(token)]);
+    if (result.ok) {
+      setProjects(result.projects);
+      setChangeRequests(result.projects.flatMap((project) => project.changeRequests ?? []));
+      setRequirements(result.projects.flatMap((project) => project.requirements ?? []));
+    }
+    if (bills.ok) setInvoices(bills.invoices);
+  }, []);
+
   useEffect(() => {
     refreshPeople(session?.token);
-  }, [refreshPeople, session?.token]);
+    refreshProjects(session?.token);
+  }, [refreshPeople, refreshProjects, session?.token]);
 
   const record = users.find((item) => item.id === session?.id) ?? session;
   const user = record && record.active !== false ? record : null;
@@ -436,7 +449,7 @@ export function AppStateProvider({ children }) {
       .filter((item) => item.role === "manager" && item.active !== false)
       .map((item) => item.id);
 
-  const createProject = ({
+  const createProject = async ({
     clientId,
     name,
     service,
@@ -457,25 +470,30 @@ export function AppStateProvider({ children }) {
     if (!memberIds?.length) errors.memberIds = "Select an available developer.";
     if (Object.keys(errors).length) return { ok: false, errors };
 
+    const startedLabel = new Date().toLocaleDateString("en-ZA", {
+      day: "2-digit",
+      month: "short",
+    });
+    const remote = await createRemoteProject(
+      {
+        clientId,
+        name: name.trim(),
+        service: (service || name).trim(),
+        description: description.trim(),
+        status: "in_progress",
+        stage: "discovery",
+        startedLabel,
+        dueLabel: dateLabel(dueAt),
+        dueThisWeek: dueAt >= todayISO() && dueAt <= addDaysISO(todayISO(), 7),
+        progress: 8,
+        memberIds,
+      },
+      session?.token,
+    );
+    if (!remote.ok) return { ok: false, errors: { form: remote.message } };
     const project = {
-      id: createId("project"),
-      clientId,
-      name: name.trim(),
-      service: (service || name).trim(),
-      status: "in_progress",
-      stage: "discovery",
-      startedLabel: new Date().toLocaleDateString("en-ZA", {
-        day: "2-digit",
-        month: "short",
-      }),
+      ...remote.project,
       dueAt,
-      dueLabel: dateLabel(dueAt),
-      dueThisWeek: dueAt >= todayISO() && dueAt <= addDaysISO(todayISO(), 7),
-      progress: 8,
-      memberIds,
-      description: description.trim(),
-      milestones: [],
-      tasks: [],
       files: brief?.name
         ? [
             {
@@ -491,9 +509,8 @@ export function AppStateProvider({ children }) {
             },
           ]
         : [],
-      comments: [],
     };
-    setProjects((current) => [project, ...current]);
+    await refreshProjects(session?.token);
     const client = clients.find((item) => item.id === clientId);
     addActivity(
       project.id,
@@ -543,20 +560,16 @@ export function AppStateProvider({ children }) {
     );
   };
 
-  const moveTask = (projectId, taskId, status) => {
+  const moveTask = async (projectId, taskId, status) => {
     const project = projects.find((item) => item.id === projectId);
     const task = project?.tasks.find((item) => item.id === taskId);
-    setProjects((current) =>
-      current.map((item) => {
-        if (item.id !== projectId) return item;
-        return {
-          ...item,
-          tasks: item.tasks.map((entry) =>
-            entry.id === taskId ? { ...entry, status } : entry,
-          ),
-        };
-      }),
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/tasks/${taskId}/status`,
+      session?.token,
+      { status },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     if (task && project) {
       addActivity(
         projectId,
@@ -570,8 +583,20 @@ export function AppStateProvider({ children }) {
     }
   };
 
-  const addTask = (projectId, { title, description, dueLabel, assigneeId }) => {
+  const addTask = async (projectId, { title, description, dueLabel, assigneeId }) => {
     const project = projects.find((item) => item.id === projectId);
+    const remote = await createRemoteTask(
+      projectId,
+      {
+        title: title.trim(),
+        description: description.trim(),
+        dueLabel: dueLabel.trim() || "No date",
+        assigneeId: assigneeId || null,
+      },
+      session?.token,
+    );
+    if (!remote.ok) return null;
+    await refreshProjects(session?.token);
     const task = {
       id: createId("task"),
       title: title.trim(),
@@ -581,13 +606,6 @@ export function AppStateProvider({ children }) {
       status: "backlog",
       assigneeId: assigneeId || null,
     };
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === projectId
-          ? { ...item, tasks: [task, ...item.tasks] }
-          : item,
-      ),
-    );
     if (!assigneeId) {
       addActivity(projectId, `Unassigned task added: ${task.title}`);
       return task;
@@ -608,7 +626,7 @@ export function AppStateProvider({ children }) {
     return task;
   };
 
-  const assignTask = (projectId, taskId, assigneeId) => {
+  const assignTask = async (projectId, taskId, assigneeId) => {
     const project = projects.find((item) => item.id === projectId);
     const task = project?.tasks.find((item) => item.id === taskId);
     const developer = users.find(
@@ -618,20 +636,14 @@ export function AppStateProvider({ children }) {
         (item.memberId || item.id) === assigneeId,
     );
     if (!task || !developer) return { ok: false, message: "Choose a developer." };
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === projectId
-          ? {
-              ...item,
-              tasks: item.tasks.map((entry) =>
-                entry.id === taskId
-                  ? { ...entry, assigneeId: developer.memberId || developer.id }
-                  : entry,
-              ),
-            }
-          : item,
-      ),
+    const remote = await assignRemoteTask(
+      projectId,
+      taskId,
+      developer.memberId || developer.id,
+      session?.token,
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(projectId, `${task.title} assigned to ${developer.name}`);
     notify(
       [developer.id],
@@ -657,38 +669,19 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const addComment = (projectId, body, replyToId = null) => {
+  const addComment = async (projectId, body, replyToId = null) => {
     const text = body?.trim();
     if (!user || !text) return { ok: false };
     const project = projects.find((item) => item.id === projectId);
     const parent = (project?.comments ?? []).find((item) => item.id === replyToId);
-    const rootId = parent ? (parent.replyToId || parent.id) : null;
-    const comment = {
-      id: createId("comment"),
-      authorName:
-        user.role === "client"
-          ? (clients.find((item) => item.id === user.clientId)?.name ??
-            user.name)
-          : user.name,
-      initials: user.name
-        .split(" ")
-        .map((part) => part[0])
-        .slice(0, 2)
-        .join("")
-        .toUpperCase(),
-      role: user.role,
-      body: text,
-      replyToId: rootId,
-      createdAt: new Date().toISOString(),
-      read: user.role !== "client",
-    };
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === projectId
-          ? { ...item, comments: [...(item.comments ?? []), comment] }
-          : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/comments`,
+      session?.token,
+      { body: text, replyToId: replyToId || null },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
+    const comment = { authorName: user.name };
     addActivity(
       projectId,
       parent
@@ -731,34 +724,26 @@ export function AppStateProvider({ children }) {
     });
   }, []);
 
-  const addFile = (projectId, { name, kind, description, previewUrl }) => {
+  const addFile = async (projectId, { name, kind, description, previewUrl }) => {
     const project = projects.find((item) => item.id === projectId);
     const cleanName = name.trim();
-    const existing =
-      project?.files.filter(
-        (file) => file.name.toLowerCase() === cleanName.toLowerCase(),
-      ) ?? [];
-    const version =
-      existing.reduce((max, file) => Math.max(max, file.version || 1), 0) +
-        (existing.length ? 1 : 0) || 1;
-    const file = {
-      id: createId("file"),
-      name: cleanName,
-      kind,
-      description: (description || "").trim(),
-      previewUrl: previewUrl || "",
-      version: existing.length ? version : 1,
-      uploadedBy: user?.name?.split(" ")[0] ?? "Team",
-      createdAt: new Date().toISOString(),
-      approval: "pending",
-    };
-    setProjects((current) =>
-      current.map((item) =>
-        item.id === projectId
-          ? { ...item, files: [file, ...item.files] }
-          : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/files`,
+      session?.token,
+      {
+        name: cleanName,
+        kind,
+        description: (description || "").trim(),
+        previewUrl: previewUrl || "",
+      },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
+    const file = {
+      name: cleanName,
+      version: 1,
+      uploadedBy: user?.name?.split(" ")[0] ?? "Team",
+    };
     addActivity(
       projectId,
       `${file.uploadedBy} uploaded ${file.name} v${file.version}`,
@@ -771,21 +756,16 @@ export function AppStateProvider({ children }) {
       );
   };
 
-  const decideFile = (projectId, fileId, approval) => {
-    let fileName = "a file";
-    setProjects((current) =>
-      current.map((project) => {
-        if (project.id !== projectId) return project;
-        return {
-          ...project,
-          files: project.files.map((file) => {
-            if (file.id !== fileId) return file;
-            fileName = file.name;
-            return { ...file, approval };
-          }),
-        };
-      }),
+  const decideFile = async (projectId, fileId, approval) => {
+    const project = projects.find((item) => item.id === projectId);
+    const fileName = project?.files.find((file) => file.id === fileId)?.name ?? "a file";
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/files/${fileId}/decision`,
+      session?.token,
+      { status: approval },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     const client = clients.find((item) => item.id === user?.clientId);
     const verb = approval === "approved" ? "approved" : "declined";
     addActivity(
@@ -801,23 +781,27 @@ export function AppStateProvider({ children }) {
 
   const approveFile = (projectId, fileId) => decideFile(projectId, fileId, "approved");
 
-  const decideInvoice = (invoiceId, status) => {
+  const decideInvoice = async (invoiceId, status) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice) return { ok: false, message: "That invoice could not be found." };
     const current = effectiveStatus(invoice);
     if (!["sent", "overdue", "pending"].includes(current)) {
       return { ok: false, message: "This invoice has already been decided." };
     }
-    setInvoices((list) =>
-      list.map((item) => (item.id === invoiceId ? { ...item, status } : item)),
+    const remote = await postProjectAction(
+      `/api/invoices/${invoiceId}/decision`,
+      session?.token,
+      { status },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     const verb = status === "approved" ? "approved" : "declined";
     addActivity(invoice.projectId, `${user?.name ?? "Client"} ${verb} ${invoice.number}`);
     notify(managerIds(), `${user?.name ?? "A client"} ${verb} ${invoice.number}.`, invoice.projectId);
     return { ok: true };
   };
 
-  const generateInvoice = ({
+  const generateInvoice = async ({
     clientId,
     projectId,
     issuedAt,
@@ -836,9 +820,28 @@ export function AppStateProvider({ children }) {
     const number = `INV${highest + 1}`;
     const issued = issuedAt || todayISO();
     const due = dueAt || addDaysISO(issued, 14);
+    const lines = items.map((item) => ({
+      description: item.description,
+      qty: Number(item.qty) || 1,
+      amount: Number(item.amount),
+    }));
+    const amount = lines.reduce((sum, item) => sum + item.qty * item.amount, 0);
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/invoices`,
+      session?.token,
+      {
+        title: items[0]?.description || "Invoice",
+        amount,
+        dueLabel: due,
+        status: send ? "pending" : "draft",
+        items: lines,
+      },
+    );
+    if (!remote.ok) return { ok: false, message: remote.message };
+    await refreshProjects(session?.token);
     const invoice = {
-      id: createId("invoice"),
-      number,
+      id: remote.payload?.id,
+      number: remote.payload?.number || number,
       clientId,
       projectId,
       title: items[0]?.description || "Invoice",
@@ -847,15 +850,8 @@ export function AppStateProvider({ children }) {
       dueAt: due,
       issuedLabel: dateLabel(issued),
       dueLabel: dateLabel(due),
-      sentBy: user?.id ?? null,
-      items: items.map((item) => ({
-        ...item,
-        id: createId("line"),
-        qty: Number(item.qty) || 1,
-        amount: Number(item.amount),
-      })),
+      items: lines,
     };
-    setInvoices((current) => [invoice, ...current]);
     if (send) {
       const client = clients.find((item) => item.id === clientId);
       addActivity(
@@ -872,26 +868,35 @@ export function AppStateProvider({ children }) {
   };
 
   // Only drafts can be edited. Pass send = true to save and send in one step.
-  const updateInvoice = (invoiceId, patch, send = false) => {
+  const updateInvoice = async (invoiceId, patch, send = false) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice)
       return { ok: false, message: "That invoice could not be found." };
     if (invoice.status !== "draft")
       return { ok: false, message: "Only draft invoices can be edited." };
-    const next = { ...patch };
-    if (patch.items) {
-      next.items = patch.items.map((item) => ({
-        ...item,
-        qty: Number(item.qty) || 1,
-        amount: Number(item.amount),
-      }));
-    }
-    if (patch.issuedAt) next.issuedLabel = dateLabel(patch.issuedAt);
-    if (patch.dueAt) next.dueLabel = dateLabel(patch.dueAt);
-    const merged = { ...invoice, ...next, ...(send ? { status: "sent" } : {}) };
-    setInvoices((current) =>
-      current.map((item) => (item.id === invoiceId ? merged : item)),
+    const lines = (patch.items ?? invoice.items ?? []).map((item) => ({
+      description: item.description,
+      qty: Number(item.qty) || 1,
+      amount: Number(item.amount),
+    }));
+    const remote = await postProjectAction(
+      `/api/invoices/${invoiceId}/status`,
+      session?.token,
+      {
+        status: send ? "sent" : "draft",
+        title: patch.title || invoice.title,
+        dueLabel: patch.dueAt || invoice.dueAt || invoice.dueLabel,
+        items: lines,
+      },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
+    const merged = {
+      ...invoice,
+      ...patch,
+      number: remote.payload?.number || invoice.number,
+      status: send ? "sent" : "draft",
+    };
     if (send) {
       const client = clients.find((item) => item.id === merged.clientId);
       addActivity(
@@ -909,28 +914,36 @@ export function AppStateProvider({ children }) {
 
   const sendInvoice = (invoiceId) => updateInvoice(invoiceId, {}, true);
 
-  const deleteInvoice = (invoiceId) => {
+  const deleteInvoice = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice || invoice.status !== "draft")
       return { ok: false, message: "Only draft invoices can be deleted." };
-    setInvoices((current) => current.filter((item) => item.id !== invoiceId));
+    const remote = await postProjectAction(
+      `/api/invoices/${invoiceId}`,
+      session?.token,
+      undefined,
+      "DELETE",
+    );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     return { ok: true };
   };
 
-  const markInvoicePaid = (invoiceId) => {
+  const markInvoicePaid = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice || !["sent", "overdue"].includes(effectiveStatus(invoice))) {
+    if (!invoice || !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))) {
       return {
         ok: false,
         message: "Only sent invoices can be marked as paid.",
       };
     }
-    const paidAt = todayISO();
-    setInvoices((current) =>
-      current.map((item) =>
-        item.id === invoiceId ? { ...item, status: "paid", paidAt } : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/invoices/${invoiceId}/status`,
+      session?.token,
+      { status: "paid" },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(
       invoice.projectId,
       `Invoice ${invoice.number} was marked as paid`,
@@ -943,16 +956,18 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const cancelInvoice = (invoiceId) => {
+  const cancelInvoice = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice || !["sent", "overdue"].includes(effectiveStatus(invoice))) {
+    if (!invoice || !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))) {
       return { ok: false, message: "Only sent invoices can be cancelled." };
     }
-    setInvoices((current) =>
-      current.map((item) =>
-        item.id === invoiceId ? { ...item, status: "cancelled" } : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/invoices/${invoiceId}/status`,
+      session?.token,
+      { status: "cancelled" },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(invoice.projectId, `Invoice ${invoice.number} was cancelled`);
     notify(
       clientUserIds(invoice.clientId),
@@ -1102,18 +1117,18 @@ export function AppStateProvider({ children }) {
     addActivity(projectId, `${label} marked complete`);
   };
 
-  const addRequirement = (projectId, text) => {
+  const addRequirement = async (projectId, text) => {
     const project = projects.find((item) => item.id === projectId);
     if (!text?.trim() || !project)
       return { ok: false, message: "Enter the requirement." };
-    const requirement = {
-      id: createId("req"),
-      projectId,
-      text: text.trim(),
-      status: "recorded",
-    };
-    setRequirements((current) => [...current, requirement]);
-    addActivity(projectId, `Requirement recorded: ${requirement.text}`);
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/requirements`,
+      session?.token,
+      { text: text.trim() },
+    );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
+    addActivity(projectId, `Requirement recorded: ${text.trim()}`);
     notify(
       clientUserIds(project.clientId),
       `A requirement on ${project.name} is ready for you to confirm.`,
@@ -1122,14 +1137,16 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const setRequirementStatus = (requirementId, status) => {
+  const setRequirementStatus = async (requirementId, status) => {
     const requirement = requirements.find((item) => item.id === requirementId);
     if (!requirement) return;
-    setRequirements((current) =>
-      current.map((item) =>
-        item.id === requirementId ? { ...item, status } : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/projects/${requirement.projectId}/requirements/${requirementId}`,
+      session?.token,
+      { status },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(
       requirement.projectId,
       `Requirement ${status}: ${requirement.text}`,
@@ -1142,7 +1159,7 @@ export function AppStateProvider({ children }) {
       );
   };
 
-  const submitChangeRequest = (projectId, taskId, description, attachment = null) => {
+  const submitChangeRequest = async (projectId, taskId, description, attachment = null) => {
     if (!description?.trim())
       return { ok: false, message: "Describe the change before submitting." };
     const project = projects.find((item) => item.id === projectId);
@@ -1151,27 +1168,22 @@ export function AppStateProvider({ children }) {
       return { ok: false, message: "Choose the task this change belongs to." };
     if (task.status === "done")
       return { ok: false, message: "That task is already complete." };
-    const file = attachment?.previewUrl
-      ? {
-          name: attachment.name,
-          kind: attachment.kind,
-          previewUrl: attachment.previewUrl,
-        }
-      : null;
-    const request = {
-      id: createId("change"),
-      projectId,
-      taskId: task.id,
-      clientId: user?.clientId,
-      description: description.trim(),
-      attachment: file,
-      status: "submitted",
-      createdAt: new Date().toISOString(),
-    };
-    setChangeRequests((current) => [request, ...current]);
+    const remote = await postProjectAction(
+      `/api/projects/${projectId}/change-requests`,
+      session?.token,
+      {
+        taskId: task.id,
+        description: description.trim(),
+        attachmentName: attachment?.name || null,
+        attachmentKind: attachment?.kind || null,
+        attachmentPreviewUrl: attachment?.previewUrl || null,
+      },
+    );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(
       projectId,
-      `Change request on “${task.title}”: ${request.description}`,
+      `Change request on “${task.title}”: ${description.trim()}`,
     );
     notify(
       managerIds(),
@@ -1181,14 +1193,16 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const decideChangeRequest = (requestId, status) => {
+  const decideChangeRequest = async (requestId, status) => {
     const request = changeRequests.find((item) => item.id === requestId);
     if (!request) return;
-    setChangeRequests((current) =>
-      current.map((item) =>
-        item.id === requestId ? { ...item, status } : item,
-      ),
+    const remote = await postProjectAction(
+      `/api/projects/${request.projectId}/change-requests/${requestId}`,
+      session?.token,
+      { status },
     );
+    if (!remote.ok) return remote;
+    await refreshProjects(session?.token);
     addActivity(
       request.projectId,
       `Change request marked ${status.replace("_", " ")}`,
@@ -1230,6 +1244,24 @@ export function AppStateProvider({ children }) {
       const before = users.find((item) => item.id === id);
       if (!before)
         return { ok: false, message: "That user could not be found." };
+      if (before.hasAccount === false)
+        return { ok: false, message: "This client does not have a sign-in yet. Add them as a user first." };
+      if (role === "client" && !company?.trim())
+        return { ok: false, message: "A client account needs a company name." };
+
+      const remote = await updateAccount(
+        id,
+        {
+          name: name.trim(),
+          email: normalised,
+          role,
+          phone: cleanPhone,
+          company: company?.trim() ?? "",
+        },
+        session?.token,
+      );
+      if (!remote.ok) return remote;
+
       const changes = [];
       if (before.name !== name.trim())
         changes.push(["Name", before.name, name.trim()]);
@@ -1239,21 +1271,10 @@ export function AppStateProvider({ children }) {
         changes.push(["Role", roleLabel(before.role), roleLabel(role)]);
       if ((before.phone ?? "") !== cleanPhone)
         changes.push(["Phone", before.phone || "none", cleanPhone || "none"]);
+      if (role === "client" && (before.company || "") !== company.trim())
+        changes.push(["Company", before.company || "none", company.trim()]);
 
-      setUsers((current) =>
-        current.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                name: name.trim(),
-                email: normalised,
-                role,
-                phone: cleanPhone,
-                title: before.role === role ? item.title : roleLabel(role),
-              }
-            : item,
-        ),
-      );
+      await refreshPeople(session?.token);
       if (changes.length) {
         addAudit({
           type: "user_edited",

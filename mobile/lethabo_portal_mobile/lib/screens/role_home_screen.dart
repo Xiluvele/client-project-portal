@@ -8,6 +8,7 @@ class RoleHomeScreen extends StatefulWidget {
   final String role;
   final String clientId;
   final String memberId;
+  final String userId;
   final String token;
 
   const RoleHomeScreen({
@@ -16,6 +17,7 @@ class RoleHomeScreen extends StatefulWidget {
     required this.role,
     required this.clientId,
     required this.memberId,
+    this.userId = '',
     required this.token,
   });
 
@@ -99,12 +101,18 @@ class _RoleHomeScreenState extends State<RoleHomeScreen> {
       if (id.isEmpty) return [];
       return _projects.where((project) => project['clientId']?.toString() == id).toList();
     }
-    final memberId = widget.memberId.trim();
-    if (memberId.isEmpty) return [];
+    final ids = {widget.memberId.trim(), widget.userId.trim()}.where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return [];
     return _projects.where((project) {
       final members = project['memberIds'];
-      if (members is! List) return false;
-      return members.map((item) => item.toString()).contains(memberId);
+      if (members is List && members.map((item) => item.toString()).any(ids.contains)) return true;
+      final tasks = project['tasks'];
+      if (tasks is! List) return false;
+      return tasks.any((task) {
+        if (task is! Map) return false;
+        final assignee = task['assigneeId']?.toString() ?? '';
+        return ids.contains(assignee);
+      });
     }).toList();
   }
 

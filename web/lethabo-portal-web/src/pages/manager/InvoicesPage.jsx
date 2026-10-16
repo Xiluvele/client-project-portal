@@ -106,7 +106,7 @@ export function InvoicesPage() {
     setConfirming('')
   }
 
-  const submit = () => {
+  const submit = async () => {
     const project = projects.find((item) => item.id === form.projectId)
     const amount = Number(form.amount)
     if (!form.clientId || !form.projectId || !(amount > 0)) {
@@ -125,24 +125,28 @@ export function InvoicesPage() {
       items: [{ id: createId('line'), description: project?.name || 'Project invoice', qty: 1, amount }],
     }
     if (editingId) {
-      const result = updateInvoice(editingId, { ...payload, title: project?.name || 'Project invoice' }, true)
+      const result = await updateInvoice(editingId, { ...payload, title: project?.name || 'Project invoice' }, true)
       if (!result.ok) {
         setError(result.message)
         return
       }
       setNotice(`#${result.invoice.number} was sent to the client.`)
     } else {
-      const invoice = generateInvoice({ ...payload, send: true })
+      const invoice = await generateInvoice({ ...payload, send: true })
+      if (!invoice?.number) {
+        setError(invoice?.message || 'The invoice could not be saved.')
+        return
+      }
       setNotice(`#${invoice.number} was generated and sent to the client.`)
     }
     setOpen(false)
     setEditingId(null)
   }
 
-  const handleSend = (invoice) => {
-    const result = sendInvoice(invoice.id)
+  const handleSend = async (invoice) => {
+    const result = await sendInvoice(invoice.id)
     setNotice(result.ok ? `#${invoice.number} was sent to the client.` : result.message)
-    closeView()
+    if (result.ok) closeView()
   }
 
   const handleRemind = async (invoice) => {
@@ -150,16 +154,16 @@ export function InvoicesPage() {
     setNotice(result.message)
   }
 
-  const handleCancel = (invoice) => {
-    const result = cancelInvoice(invoice.id)
+  const handleCancel = async (invoice) => {
+    const result = await cancelInvoice(invoice.id)
     setNotice(result.ok ? `#${invoice.number} was cancelled.` : result.message)
-    closeView()
+    if (result.ok) closeView()
   }
 
-  const handleDelete = (invoice) => {
-    const result = deleteInvoice(invoice.id)
+  const handleDelete = async (invoice) => {
+    const result = await deleteInvoice(invoice.id)
     setNotice(result.ok ? `Draft #${invoice.number} was deleted.` : result.message)
-    closeView()
+    if (result.ok) closeView()
   }
 
   return (

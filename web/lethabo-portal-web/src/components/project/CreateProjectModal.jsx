@@ -48,9 +48,9 @@ export function CreateProjectModal({ open, onClose }) {
     }
   }
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
-    const result = createProject({ ...form, memberIds, brief })
+    const result = await createProject({ ...form, memberIds, brief })
     if (!result.ok) {
       setErrors(result.errors ?? {})
       return
@@ -108,6 +108,7 @@ export function CreateProjectModal({ open, onClose }) {
           )}
           {errors.memberIds ? <span className="field__error">{errors.memberIds}</span> : null}
         </fieldset>
+        {errors.form ? <p className="form-error" role="alert">{errors.form}</p> : null}
         <Button type="submit">Create project</Button>
       </form>
     </Modal>

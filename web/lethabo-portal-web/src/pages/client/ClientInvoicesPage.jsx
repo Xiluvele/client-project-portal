@@ -6,8 +6,8 @@ import { invoiceMetrics, invoiceTotal, invoicesForClient, projectById } from '..
 import { useAppState } from '../../state/useAppState'
 
 export function ClientInvoicesPage() {
-  const { user, invoices, projects } = useAppState()
-  const bills = invoicesForClient(invoices, user?.clientId)
+  const { user, invoices, projects, clients } = useAppState()
+  const bills = invoicesForClient(invoices, user?.clientId, clients, user?.email)
   const metrics = invoiceMetrics(bills)
   return (
     <>
