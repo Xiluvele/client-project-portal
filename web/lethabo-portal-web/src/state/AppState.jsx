@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppStateContext } from "./useAppState";
-import { teamMembers, cloneSeed } from "../data/seed";
+import { cloneSeed } from "../data/seed";
 import { createId, formatRand } from "../lib/format";
 import { PORTAL_URL } from "../lib/api";
-import { activateRemote, createPendingAccount } from "../lib/accounts";
+import { activateRemote, createPendingAccount, directoryMembers, listAccounts, listClients, listMembers, setAccountStatus } from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
 import { emailPaymentReminder, emailSignInCode } from "../lib/mailCode";
 import { assessOtp, createOtpChallenge } from "../lib/otp";
@@ -41,30 +41,6 @@ function shouldDropStoredAccounts() {
   return dropStoredAccounts;
 }
 
-function withoutDroppedAccounts(list, drop) {
-  if (!drop) return list;
-  return list.filter(
-    (item) => !DROPPED_EMAILS.has(String(item?.email ?? "").toLowerCase()),
-  );
-}
-
-function readStored(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return withoutDroppedAccounts(fallback, true);
-    const saved = JSON.parse(raw);
-    if (!Array.isArray(saved)) return withoutDroppedAccounts(fallback, true);
-    const byId = new Map(fallback.map((item) => [item.id, item]));
-    saved.forEach((item) => {
-      if (item?.id)
-        byId.set(item.id, { ...(byId.get(item.id) ?? {}), ...item });
-    });
-    return withoutDroppedAccounts([...byId.values()], true);
-  } catch {
-    return withoutDroppedAccounts(fallback, true);
-  }
-}
-
 function readSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -92,20 +68,20 @@ function publicUser(user) {
   };
 }
 
+function forgetStoredPeople() {
+  try {
+    localStorage.removeItem(USERS_KEY);
+    localStorage.removeItem(CLIENTS_KEY);
+  } catch {
+    /* Older browser copies can stay if storage is unavailable. */
+  }
+}
+
 export function AppStateProvider({ children }) {
   const seed = useMemo(() => cloneSeed(), []);
-  const [users, setUsers] = useState(() =>
-    withoutDroppedAccounts(
-      readStored(USERS_KEY, seed.users),
-      shouldDropStoredAccounts(),
-    ),
-  );
-  const [clients, setClients] = useState(() =>
-    withoutDroppedAccounts(
-      readStored(CLIENTS_KEY, seed.clients),
-      shouldDropStoredAccounts(),
-    ),
-  );
+  const [users, setUsers] = useState([]);
+  const [clients, setClients] = useState([]);
+  const [members, setMembers] = useState([]);
   const [projects, setProjects] = useState(seed.projects);
   const [invoices, setInvoices] = useState(seed.invoices);
   const [activities, setActivities] = useState(seed.activities);
@@ -132,9 +108,8 @@ export function AppStateProvider({ children }) {
   const [auditLog, setAuditLog] = useState([]);
 
   useEffect(() => {
+    forgetStoredPeople();
     if (!shouldDropStoredAccounts()) return;
-    setUsers((current) => withoutDroppedAccounts(current, true));
-    setClients((current) => withoutDroppedAccounts(current, true));
     setSession((current) => {
       if (!DROPPED_EMAILS.has(String(current?.email ?? "").toLowerCase())) return current;
       try {
@@ -146,15 +121,25 @@ export function AppStateProvider({ children }) {
     });
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  }, [users]);
+  const refreshPeople = useCallback(async (token) => {
+    if (!token) return;
+    const [accountResult, clientResult, memberResult] = await Promise.all([
+      listAccounts(token),
+      listClients(token),
+      listMembers(token),
+    ]);
+    if (accountResult.ok) setUsers(accountResult.users);
+    if (clientResult.ok) setClients(clientResult.clients);
+    if (memberResult.ok || accountResult.ok) {
+      setMembers(directoryMembers(accountResult.users, memberResult.members));
+    }
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
-  }, [clients]);
+    refreshPeople(session?.token);
+  }, [refreshPeople, session?.token]);
 
-  const record = users.find((item) => item.id === session?.id) ?? null;
+  const record = users.find((item) => item.id === session?.id) ?? session;
   const user = record && record.active !== false ? record : null;
 
   const persist = (nextUser, token = null) => {
@@ -1335,6 +1320,7 @@ export function AppStateProvider({ children }) {
     }
 
     setUsers((current) => [...current, next]);
+    refreshPeople(session?.token);
     addAudit({
       type: "user_added",
       category: "accounts",
@@ -1481,12 +1467,14 @@ export function AppStateProvider({ children }) {
     return { ok: true, user: publicUser(ready) };
   };
 
-  const setAccountActive = (userId, active) => {
+  const setAccountActive = async (userId, active) => {
     if (userId === user?.id)
       return {
         ok: false,
         message: "You cannot deactivate the account you are using.",
       };
+    const remote = await setAccountStatus(userId, active, session?.token);
+    if (!remote.ok) return remote;
     const account = users.find((item) => item.id === userId);
     setUsers((current) =>
       current.map((item) =>
@@ -1533,7 +1521,7 @@ export function AppStateProvider({ children }) {
     notifications,
     auditLog,
     addAudit,
-    members: teamMembers,
+    members,
     login,
     logout,
     verifyOtp,

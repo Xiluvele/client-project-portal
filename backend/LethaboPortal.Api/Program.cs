@@ -366,6 +366,7 @@ app.MapGet("/api/team-members", async (PortalDbContext db) =>
             member.ShortName,
             member.Role,
             member.Initials,
+            member.Email,
             member.Allocated
         })
         .ToListAsync();
@@ -1149,6 +1150,53 @@ app.MapGet("/api/audit", async (
 }).RequireAuthorization(policy => policy.RequireRole("administrator"));
 
 
+app.MapGet("/api/accounts", async (PortalDbContext db, CancellationToken cancellationToken) =>
+{
+    var users = await db.Users
+        .AsNoTracking()
+        .OrderBy(item => item.Name)
+        .Select(item => new
+        {
+            item.Id,
+            item.Name,
+            item.Email,
+            item.Role,
+            item.ClientId,
+            item.MemberId,
+            item.Title,
+            item.Phone,
+            item.Active,
+            item.Activated
+        })
+        .ToListAsync(cancellationToken);
+
+    return Results.Ok(users);
+}).RequireAuthorization(policy => policy.RequireRole("administrator", "manager"));
+
+app.MapPost("/api/accounts/{id}/status", async (
+    string id,
+    AccountStatusRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (principal.FindFirstValue(ClaimTypes.NameIdentifier) == id && !request.Active)
+    {
+        return Results.BadRequest(new { ok = false, message = "You cannot deactivate the account you are using." });
+    }
+
+    var user = await db.Users.FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+    if (user == null)
+    {
+        return Results.NotFound(new { ok = false, message = "That user could not be found." });
+    }
+
+    user.Active = request.Active;
+    user.Locked = !request.Active;
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Ok(new { ok = true });
+}).RequireAuthorization(policy => policy.RequireRole("administrator"));
+
 app.MapPost("/api/accounts", async (
     CreateAccountRequest request,
     ClaimsPrincipal principal,
@@ -1191,6 +1239,31 @@ app.MapPost("/api/accounts", async (
         });
     }
 
+    string? memberId = null;
+    if (role is "developer" or "manager")
+    {
+        var existingMember = await db.TeamMembers
+            .FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
+        if (existingMember == null)
+        {
+            memberId = NewId("member");
+            db.TeamMembers.Add(new TeamMember
+            {
+                Id = memberId,
+                Name = name,
+                ShortName = ShortName(name),
+                Role = RoleTitle(role),
+                Initials = PersonInitials(name),
+                Email = email,
+                Allocated = false,
+            });
+        }
+        else
+        {
+            memberId = existingMember.Id;
+        }
+    }
+
     var userId = NewId("user");
     var code = RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
     var user = new PortalUser
@@ -1201,7 +1274,7 @@ app.MapPost("/api/accounts", async (
         PasswordHash = "",
         Role = role,
         ClientId = clientId,
-        MemberId = role == "developer" ? userId : null,
+        MemberId = memberId,
         Title = role == "client" ? company : RoleTitle(role),
         Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
         Active = true,
@@ -1458,6 +1531,13 @@ static string PersonInitials(string name)
     return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
 }
 
+static string ShortName(string name)
+{
+    var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length < 2) return name;
+    return $"{parts[0]} {char.ToUpperInvariant(parts[^1][0])}.";
+}
+
 static int WorkProgress(IEnumerable<WorkItem> tasks)
 {
     var list = tasks.ToList();
@@ -1629,6 +1709,8 @@ public record EmailCodeRequest(
     string? Purpose,
     string? Link
 );
+
+public record AccountStatusRequest(bool Active);
 
 public record CreateAccountRequest(
     string Name,

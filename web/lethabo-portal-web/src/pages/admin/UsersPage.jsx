@@ -145,9 +145,13 @@ export function UsersPage() {
   const viewedInactive = viewed?.active === false
   const toConfirm = confirming ? users.find((u) => u.id === confirming) : null
 
-  const toggleAccount = (account) => {
-    if (account.active === false) setAccountActive(account.id, true)
-    else setConfirming(account.id)
+  const toggleAccount = async (account) => {
+    if (account.active === false) {
+      const result = await setAccountActive(account.id, true)
+      if (!result?.ok) setError(result?.message || 'The account could not be updated.')
+      return
+    }
+    setConfirming(account.id)
   }
 
   return (
@@ -158,6 +162,7 @@ export function UsersPage() {
         actions={<Button onClick={openAdd}>Add user</Button>}
       />
       {notice ? <p className="notice" role="status">{notice}</p> : null}
+      {error && !open ? <p className="notice" role="alert">{error}</p> : null}
       <Card>
         <div className="table-wrap">
           <table className="data">
@@ -171,6 +176,11 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>No accounts are stored in the database yet.</td>
+                </tr>
+              ) : null}
               {users.map((account) => {
                 const inactive = account.active === false
                 const waiting = account.activated === false && !inactive
@@ -250,7 +260,11 @@ export function UsersPage() {
               {toConfirm.name} will not be able to sign in until you activate the account again.
               Their projects and history stay as they are.
             </p>
-            <Button onClick={() => { setAccountActive(toConfirm.id, false); setConfirming(null) }}>
+            <Button onClick={async () => {
+              const result = await setAccountActive(toConfirm.id, false)
+              if (!result?.ok) setError(result?.message || 'The account could not be updated.')
+              setConfirming(null)
+            }}>
               Deactivate {toConfirm.name}
             </Button>
             <button type="button" className="btn btn--secondary" onClick={() => setConfirming(null)}>

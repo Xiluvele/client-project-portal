@@ -2,32 +2,11 @@ const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60 * 1000).toISO
 const hoursAgo = (hours) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
 
-export const teamMembers = [
-  { id: 'nk', name: 'Naledi Khumalo', shortName: 'Naledi K.', role: 'Project Manager', initials: 'NK', email: 'naledi@lethabom.co.za', allocated: true },
-  { id: 'tm', name: 'Thabo Molefe', shortName: 'Thabo M.', role: 'UI/UX Designer', initials: 'TM', email: 'thabo@lethabom.co.za', allocated: true },
-  { id: 'sd', name: 'Sipho Dlamini', shortName: 'Sipho D.', role: 'Software Developer', initials: 'SD', email: 'sipho@lethabom.co.za', allocated: true },
-  { id: 'an', name: 'Amahle Nkosi', shortName: 'Amahle N.', role: 'Software Developer', initials: 'AN', email: 'amahle@lethabom.co.za', allocated: true },
-  { id: 'lp', name: 'Lerato Pule', shortName: 'Lerato P.', role: 'Graphic Designer', initials: 'LP', email: 'lerato@lethabom.co.za', allocated: true },
-  { id: 'km', name: 'Karabo Mensah', shortName: 'Karabo M.', role: 'Content Creator', initials: 'KM', email: 'karabo@lethabom.co.za', allocated: false },
-]
+export const teamMembers = []
 
-export const clients = [
-  { id: 'kunene', name: 'Kunene Attorneys', contact: 'Thandi Kunene', email: 'thandi@kunene.co.za' },
-  { id: 'greenfield', name: 'Greenfield Academy', contact: 'Peter Naidoo', email: 'peter@greenfield.co.za' },
-  { id: 'vuka', name: 'Vuka Retail', contact: 'Lindiwe Ndlovu', email: 'lindiwe@vukaretail.co.za' },
-  { id: 'botlumelo', name: 'Botlumelo Clinic', contact: 'Dr. Masego K.', email: 'masego@botlumelo.co.za' },
-  { id: 'northwind', name: 'Northwind Logistics', contact: 'Johan Venter', email: 'johan@northwind.co.za' },
-  { id: 'sahara', name: 'Sahara Foods', contact: 'Amina Yusuf', email: 'amina@saharafoods.co.za' },
-  { id: 'metrodental', name: 'Metro Dental', contact: 'Dr. Claire Adams', email: 'claire@metrodental.co.za' },
-]
+export const clients = []
 
-export const users = [
-  { id: 'user-admin', name: 'Boitumelo Sithole', email: 'admin@lethabom.co.za', password: 'connect123', role: 'administrator', title: 'Administrator', active: true, activated: true },
-  { id: 'user-nk', name: 'Naledi Khumalo', email: 'naledi@lethabom.co.za', password: 'connect123', role: 'manager', memberId: 'nk', title: 'Project Manager', active: true },
-  { id: 'user-sipho', name: 'Sipho Dlamini', email: 'sipho@lethabom.co.za', password: 'connect123', role: 'developer', memberId: 'sd', title: 'Software Developer', active: true },
-  { id: 'user-thandi', name: 'Thandi Kunene', email: 'thandi@kunene.co.za', password: 'connect123', role: 'client', clientId: 'kunene', title: 'Kunene Attorneys', active: true },
-  { id: 'user-lindiwe', name: 'Lindiwe Ndlovu', email: 'lindiwe@vukaretail.co.za', password: 'connect123', role: 'client', clientId: 'vuka', title: 'Vuka Retail', active: true },
-]
+export const users = []
 
 const kuneneTasks = [
   { id: 't1', title: 'Collect final copy for Practice Areas page', type: 'content', status: 'backlog', assigneeId: null, dueLabel: 'No date', description: 'Waiting for a developer to be assigned.' },
