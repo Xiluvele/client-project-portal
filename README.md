@@ -664,6 +664,9 @@ As of the current development milestone:
 
 # Running application
 
+The mobile app was release in an APK file find the attached file , to access it go to C:\Users\Xiluvele Mashele\source\repos\clientPortal\mobile\lethabo_portal_mobile\build\app\outputs\flutter-apk\app-release.apk install it on a android phone. remember that the path will depend on where you are cloning the project (clientPortal\mobile\lethabo_portal_mobile\build\app\outputs\flutter-apk\app-release.apk).
+
+
 These screenshots are from the hosted website and the phone app using the same Azure API and database.
 
 ## Website
