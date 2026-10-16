@@ -659,3 +659,79 @@ As of the current development milestone:
 **Forgot Password:** Complete  
 **Role-Aware Website and Phone:** Complete  
 **Tasks, Files, Comments, Invoices, and Notifications:** Complete
+
+---
+
+# Running application
+
+These screenshots are from the hosted website and the phone app using the same Azure API and database.
+
+## Website
+
+Project manager project list.
+
+![Project manager project list](screenshots/web-projects.webp)
+
+Creating a project for a client and assigning a developer.
+
+![New project](screenshots/web-new-project.webp)
+
+Project workspace with tasks, a client reminder, files, messages, and billing.
+
+![Project workspace](screenshots/web-project-workspace.webp)
+
+Administrator Team & Access.
+
+![Team and Access](screenshots/web-team-access.webp)
+
+Adding a user.
+
+![Add user](screenshots/web-add-user.webp)
+
+Audit trail of sign-ins and account changes.
+
+![Audit trail](screenshots/web-audit-trail.webp)
+
+Developer My tasks.
+
+![Developer My tasks](screenshots/web-my-tasks.png)
+
+Developer project with change requests, files, and comments.
+
+![Developer project](screenshots/web-developer-project.png)
+
+## Phone
+
+Sign-in. After the password, the emailed 6-digit code is still required.
+
+![Phone sign-in](screenshots/phone-sign-in.webp)
+
+Administrator Team & Access, add user, audit trail, and profile.
+
+![Phone Team and Access](screenshots/phone-team-access.webp)
+
+![Phone add user](screenshots/phone-add-user.webp)
+
+![Phone audit trail](screenshots/phone-audit-trail.webp)
+
+![Phone administrator profile](screenshots/phone-admin-profile.webp)
+
+Developer projects, project detail, My tasks, and profile.
+
+![Phone developer projects](screenshots/phone-developer-projects.webp)
+
+![Phone project detail](screenshots/phone-project-detail.webp)
+
+![Phone My tasks](screenshots/phone-my-tasks.webp)
+
+![Phone developer profile](screenshots/phone-developer-profile.webp)
+
+Messages and invoice approval on the phone.
+
+![Phone messages](screenshots/phone-messages.webp)
+
+![Phone billing](screenshots/phone-billing.webp)
+
+Client dashboard.
+
+![Phone client dashboard](screenshots/phone-client-dashboard.webp)
