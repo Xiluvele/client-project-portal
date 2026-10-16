@@ -47,7 +47,13 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     setState(() {
       _loading = false;
       if (result.ok) {
-        _people = result.list.map((item) => item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{}).toList();
+        _people = result.list
+            .map(
+              (item) => item is Map
+                  ? Map<String, dynamic>.from(item)
+                  : <String, dynamic>{},
+            )
+            .toList();
       } else {
         _error = result.message;
       }
@@ -58,7 +64,12 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     final query = _search.text.trim().toLowerCase();
     if (query.isEmpty) return _people;
     return _people.where((person) {
-      final haystack = [person['name'], person['email'], person['role'], person['company']].join(' ').toLowerCase();
+      final haystack = [
+        person['name'],
+        person['email'],
+        person['role'],
+        person['company'],
+      ].join(' ').toLowerCase();
       return haystack.contains(query);
     }).toList();
   }
@@ -81,10 +92,14 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
   Future<void> _add() async {
     final note = await Navigator.push<String>(
       context,
-      MaterialPageRoute(builder: (context) => AddUserScreen(token: widget.token)),
+      MaterialPageRoute(
+        builder: (context) => AddUserScreen(token: widget.token),
+      ),
     );
     if (!mounted || note == null || note.isEmpty) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(note), backgroundColor: cardColor));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(note), backgroundColor: cardColor));
     await _load();
   }
 
@@ -93,7 +108,11 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: cardColor,
-      builder: (context) => _PersonSheet(token: widget.token, person: person, currentUserId: widget.userId),
+      builder: (context) => _PersonSheet(
+        token: widget.token,
+        person: person,
+        currentUserId: widget.userId,
+      ),
     );
     if (mounted) _load();
   }
@@ -111,9 +130,19 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(22, 20, 22, 32),
                 children: [
-                  const Text('Team & Access', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Team & Access',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 6),
-                  const Text('The same people, roles, and audit trail as the website.', style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    'The same people, roles, and audit trail as the website.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _search,
@@ -125,20 +154,42 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                       filled: true,
                       fillColor: cardColor,
                       prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  _action(Icons.person_add_alt_1_rounded, 'Add user', 'Send an activation email.', _add),
+                  _action(
+                    Icons.person_add_alt_1_rounded,
+                    'Add user',
+                    'Send an activation email.',
+                    _add,
+                  ),
                   const SizedBox(height: 10),
-                  _action(Icons.fact_check_outlined, 'Audit trail', 'User access and recorded changes.', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => AuditTrailScreen(token: widget.token)));
-                  }),
+                  _action(
+                    Icons.fact_check_outlined,
+                    'Audit trail',
+                    'User access and recorded changes.',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              AuditTrailScreen(token: widget.token),
+                        ),
+                      );
+                    },
+                  ),
                   const SizedBox(height: 18),
-                  if (_error != null) Text(_error!, style: const TextStyle(color: yellow)),
+                  if (_error != null)
+                    Text(_error!, style: const TextStyle(color: yellow)),
                   if (people.isEmpty)
                     Text(
-                      _people.isEmpty ? 'No users are in the system yet.' : 'No people match that search.',
+                      _people.isEmpty
+                          ? 'No users are in the system yet.'
+                          : 'No people match that search.',
                       style: const TextStyle(color: Colors.grey),
                     ),
                   for (final person in people)
@@ -149,12 +200,25 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
                         borderRadius: BorderRadius.circular(16),
                         child: ListTile(
                           onTap: () => _open(person),
-                          title: Text('${person['name'] ?? ''}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          title: Text(
+                            '${person['name'] ?? ''}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                           subtitle: Text(
                             '${person['email'] ?? ''}${_company(person)}',
                             style: const TextStyle(color: Colors.grey),
                           ),
-                          trailing: Text(_roleLabel(person['role']), style: const TextStyle(color: yellow, fontSize: 12, fontWeight: FontWeight.w700)),
+                          trailing: Text(
+                            _roleLabel(person['role']),
+                            style: const TextStyle(
+                              color: yellow,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -169,13 +233,24 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
     return company.isEmpty ? '' : ' · $company';
   }
 
-  Widget _action(IconData icon, String title, String subtitle, VoidCallback onTap) {
+  Widget _action(
+    IconData icon,
+    String title,
+    String subtitle,
+    VoidCallback onTap,
+  ) {
     return Material(
       color: cardColor,
       borderRadius: BorderRadius.circular(16),
       child: ListTile(
         leading: Icon(icon, color: yellow),
-        title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         subtitle: Text(subtitle, style: const TextStyle(color: Colors.grey)),
         trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
         onTap: onTap,
@@ -189,7 +264,11 @@ class _PersonSheet extends StatefulWidget {
   final Map<String, dynamic> person;
   final String currentUserId;
 
-  const _PersonSheet({required this.token, required this.person, required this.currentUserId});
+  const _PersonSheet({
+    required this.token,
+    required this.person,
+    required this.currentUserId,
+  });
 
   @override
   State<_PersonSheet> createState() => _PersonSheetState();
@@ -243,17 +322,13 @@ class _PersonSheetState extends State<_PersonSheet> {
       _saving = true;
       _error = null;
     });
-    final result = await PortalApi.put(
-      '/api/accounts/${widget.person['id']}',
-      {
-        'name': _name.text.trim(),
-        'email': _email.text.trim(),
-        'role': _role,
-        'phone': _phone.text.trim(),
-        'company': _company.text.trim(),
-      },
-      token: widget.token,
-    );
+    final result = await PortalApi.put('/api/accounts/${widget.person['id']}', {
+      'name': _name.text.trim(),
+      'email': _email.text.trim(),
+      'role': _role,
+      'phone': _phone.text.trim(),
+      'company': _company.text.trim(),
+    }, token: widget.token);
     if (!mounted) return;
     setState(() => _saving = false);
     if (!result.ok) {
@@ -282,14 +357,31 @@ class _PersonSheetState extends State<_PersonSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.fromLTRB(
+        20,
+        16,
+        20,
+        20 + MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${widget.person['name'] ?? 'Person'}', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              '${widget.person['name'] ?? 'Person'}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(_hasAccount ? '${widget.person['email'] ?? ''}' : 'Client record without a sign-in', style: const TextStyle(color: Colors.grey)),
+            Text(
+              _hasAccount
+                  ? '${widget.person['email'] ?? ''}'
+                  : 'Client record without a sign-in',
+              style: const TextStyle(color: Colors.grey),
+            ),
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: yellow)),
@@ -298,32 +390,59 @@ class _PersonSheetState extends State<_PersonSheet> {
               const SizedBox(height: 14),
               PortalField(controller: _name, label: 'Name', hint: 'Full name'),
               const SizedBox(height: 10),
-              PortalField(controller: _email, label: 'Email', hint: 'name@company.co.za'),
+              PortalField(
+                controller: _email,
+                label: 'Email',
+                hint: 'name@company.co.za',
+              ),
               const SizedBox(height: 10),
-              PortalField(controller: _phone, label: 'Phone', hint: '082 123 4567'),
+              PortalField(
+                controller: _phone,
+                label: 'Phone',
+                hint: '082 123 4567',
+              ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 initialValue: _role,
                 dropdownColor: const Color(0xFF1A1A1A),
                 style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Role', labelStyle: TextStyle(color: Colors.grey)),
+                decoration: const InputDecoration(
+                  labelText: 'Role',
+                  labelStyle: TextStyle(color: Colors.grey),
+                ),
                 items: const [
-                  DropdownMenuItem(value: 'administrator', child: Text('Administrator')),
-                  DropdownMenuItem(value: 'manager', child: Text('Project manager')),
-                  DropdownMenuItem(value: 'developer', child: Text('Developer')),
+                  DropdownMenuItem(
+                    value: 'administrator',
+                    child: Text('Administrator'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'manager',
+                    child: Text('Project manager'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'developer',
+                    child: Text('Developer'),
+                  ),
                   DropdownMenuItem(value: 'client', child: Text('Client')),
                 ],
                 onChanged: (value) => setState(() => _role = value ?? _role),
               ),
               if (_role == 'client') ...[
                 const SizedBox(height: 10),
-                PortalField(controller: _company, label: 'Company', hint: 'Company name'),
+                PortalField(
+                  controller: _company,
+                  label: 'Company',
+                  hint: 'Company name',
+                ),
               ],
               const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: yellow, foregroundColor: black),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: yellow,
+                    foregroundColor: black,
+                  ),
                   onPressed: _saving ? null : _save,
                   child: Text(_saving ? 'Saving...' : 'Save'),
                 ),
@@ -334,7 +453,10 @@ class _PersonSheetState extends State<_PersonSheet> {
                   width: double.infinity,
                   child: TextButton(
                     onPressed: _saving ? null : () => _status(!_active),
-                    child: Text(_active ? 'Deactivate account' : 'Activate account', style: const TextStyle(color: yellow)),
+                    child: Text(
+                      _active ? 'Deactivate account' : 'Activate account',
+                      style: const TextStyle(color: yellow),
+                    ),
                   ),
                 ),
               ],
