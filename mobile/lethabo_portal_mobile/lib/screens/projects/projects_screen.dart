@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../../api/portal_api.dart';
+
 class ProjectsScreen extends StatefulWidget {
   final String userId;
   final String name;
@@ -35,14 +37,6 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   static const Color yellow = Color(0xFFFFEE0B);
   static const Color black = Color(0xFF0D0D0D);
   static const Color cardColor = Color(0xFF1A1A1A);
-
-  // ============================================================
-  // AZURE API
-  // ============================================================
-
-  // Public ASP.NET Core API hosted on Azure App Service.
-  static const String apiBaseUrl =
-      'https://lethabo-portal-api-g6dzc3gphwbsameu.southafricanorth-01.azurewebsites.net';
 
   // ============================================================
   // PROJECT DATA
@@ -98,7 +92,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     try {
       // Call:
       // GET https://...azurewebsites.net/api/projects
-      final response = await http.get(Uri.parse('$apiBaseUrl/api/projects'));
+      final response = await http.get(Uri.parse('${PortalApi.baseUrl}/api/projects'));
 
       // HTTP 200 means the request was successful.
       if (response.statusCode == 200) {
