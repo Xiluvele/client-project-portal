@@ -23,7 +23,7 @@ builder.Services.AddSingleton<PortalMailer>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("portal", policy =>
-        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173", "https://client-project-portal-a28c.onrender.com")
+        policy.WithOrigins("http://localhost:5173","http://localhost:5174", "http://127.0.0.1:5173", "https://client-project-portal-a28c.onrender.com")
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
