@@ -24,17 +24,6 @@ class _LoginScreenState extends State<LoginScreen> {
   static const Color yellow = Color(0xFFFFEE0B);
   static const Color black = Color(0xFF0D0D0D);
 
-  // ============================================================
-  // API URL
-  // ============================================================
-  //
-  // Flutter will connect to the ASP.NET Core API hosted on Azure.
-  //
-  // We are not using localhost here because the Android emulator
-  // runs separately from the Windows computer.
-  static const String apiBaseUrl =
-      'https://lethabo-portal-api-g6dzc3gphwbsameu.southafricanorth-01.azurewebsites.net';
-
   @override
   void dispose() {
     _emailController.dispose();
@@ -70,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // --------------------------------------------------------
 
       final response = await http.post(
-        Uri.parse('$apiBaseUrl/api/auth/login'),
+        Uri.parse('${PortalApi.baseUrl}/api/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
       );
