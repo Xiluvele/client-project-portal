@@ -119,6 +119,7 @@ public class ProjectComment
     public string Initials { get; set; } = "";
     public string Role { get; set; } = "";
     public string Body { get; set; } = "";
+    public string? ReplyToId { get; set; }
     public DateTime CreatedAt { get; set; }
     public bool Read { get; set; }
 }
@@ -155,6 +156,10 @@ public class ChangeRequest
     public string ClientId { get; set; } = "";
     public ClientAccount? Client { get; set; }
     public string Description { get; set; } = "";
+    public string? TaskId { get; set; }
+    public string? AttachmentName { get; set; }
+    public string? AttachmentKind { get; set; }
+    public string? AttachmentPreviewUrl { get; set; }
     public string Status { get; set; } = "submitted";
     public DateTime CreatedAt { get; set; }
 }

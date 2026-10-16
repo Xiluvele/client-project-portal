@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { CHANGE_STATUSES, REQUIREMENT_STATUSES } from '../../domain/catalog'
+import { readPreview } from '../../lib/filePreview'
 import { formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
 import { Button } from '../ui/Button'
@@ -7,6 +8,7 @@ import { Card } from '../ui/Card'
 import { TextField } from '../ui/Fields'
 import { Modal } from '../ui/Modal'
 import { StatusBadge } from '../ui/StatusBadge'
+import { FilePreview } from './ProjectWidgets'
 
 export function MilestonePanel({ project }) {
   const { addMilestone, updateMilestone, completeMilestone } = useAppState()
@@ -130,18 +132,44 @@ export function RequirementPanel({ project, canRecord = false, canConfirm = fals
 
 export function ChangeRequestPanel({ project, canSubmit = false, canDecide = false }) {
   const { changeRequests, submitChangeRequest, decideChangeRequest } = useAppState()
+  const openTasks = (project.tasks ?? []).filter((task) => task.status !== 'done')
+  const [taskId, setTaskId] = useState(openTasks[0]?.id ?? '')
   const [description, setDescription] = useState('')
+  const [attachment, setAttachment] = useState(null)
   const [error, setError] = useState('')
+  const [previewFile, setPreviewFile] = useState(null)
+  const fileInput = useRef(null)
   const rows = changeRequests.filter((item) => item.projectId === project.id)
+
+  const onFile = async (event) => {
+    const file = event.target.files?.[0]
+    if (!file) {
+      setAttachment(null)
+      return
+    }
+    try {
+      setAttachment(await readPreview(file))
+      setError('')
+    } catch (readError) {
+      setAttachment(null)
+      setError(readError.message)
+    }
+  }
+
+  const clearFile = () => {
+    setAttachment(null)
+    if (fileInput.current) fileInput.current.value = ''
+  }
 
   const submit = (event) => {
     event.preventDefault()
-    const result = submitChangeRequest(project.id, description)
+    const result = submitChangeRequest(project.id, taskId, description, attachment)
     if (!result.ok) {
       setError(result.message)
       return
     }
     setDescription('')
+    clearFile()
     setError('')
   }
 
@@ -154,8 +182,11 @@ export function ChangeRequestPanel({ project, canSubmit = false, canDecide = fal
         <div className="file-row" key={request.id}>
           <div className="file-copy">
             <strong>{request.description}</strong>
-            <small>{formatRelative(request.createdAt)}</small>
+            <small>{(project.tasks ?? []).find((task) => task.id === request.taskId)?.title ?? 'Task not linked'} · {formatRelative(request.createdAt)}{request.attachment?.name ? ` · ${request.attachment.name}` : ''}</small>
           </div>
+          {request.attachment?.previewUrl ? (
+            <Button size="small" variant="secondary" onClick={() => setPreviewFile(request.attachment)}>Preview</Button>
+          ) : null}
           <StatusBadge status={request.status} label={CHANGE_STATUSES.find((status) => status.id === request.status)?.label} />
           {canDecide && ['submitted', 'under_review', 'clarification'].includes(request.status) ? (
             <div className="task__actions">
@@ -170,12 +201,35 @@ export function ChangeRequestPanel({ project, canSubmit = false, canDecide = fal
         <form className="stack" onSubmit={submit}>
           {error ? <p className="field__error">{error}</p> : null}
           <label className="field">
-            <span className="field__label">Requested change</span>
-            <textarea className="field__control" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} />
+            <span className="field__label">Task</span>
+            <select className="field__control" value={taskId} onChange={(event) => setTaskId(event.target.value)} aria-label="Task for this change">
+              <option value="">Choose a task</option>
+              {openTasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+            </select>
           </label>
+          <label className="field">
+            <span className="field__label">Description</span>
+            <textarea className="field__control" value={description} onChange={(event) => setDescription(event.target.value)} rows={3} placeholder="Describe the change outside the agreed work" />
+          </label>
+          <label className="field">
+            <span className="field__label">Attachment</span>
+            <input ref={fileInput} className="field__control" type="file" accept="image/*,.pdf,.doc,.docx" onChange={onFile} />
+          </label>
+          {attachment ? (
+            <div className="upload-preview">
+              <FilePreview file={attachment} />
+              <small>{attachment.name}</small>
+              <Button type="button" size="small" variant="secondary" onClick={clearFile}>Remove file</Button>
+            </div>
+          ) : null}
           <Button type="submit">Request a change</Button>
         </form>
       ) : null}
+      <Modal title={previewFile?.name || 'Preview'} open={Boolean(previewFile)} onClose={() => setPreviewFile(null)}>
+        <div className="preview-stage">
+          {previewFile?.previewUrl ? <FilePreview file={previewFile} large /> : <p className="empty">This file has no preview stored.</p>}
+        </div>
+      </Modal>
     </Card>
   )
 }

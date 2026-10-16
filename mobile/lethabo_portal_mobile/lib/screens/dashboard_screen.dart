@@ -3,6 +3,7 @@ import 'add_user_screen.dart';
 import 'audit_trail_screen.dart';
 import 'manager/manager_home_screen.dart';
 import 'projects/projects_screen.dart';
+import 'role_home_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final String userId;
@@ -71,6 +72,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         role == 'project manager';
   }
 
+  bool get _isClient => widget.role.trim().toLowerCase() == 'client';
+
+  bool get _isDeveloper => widget.role.trim().toLowerCase() == 'developer';
+
   @override
   Widget build(BuildContext context) {
     if (_isManager) {
@@ -79,6 +84,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
         name: widget.name,
         email: widget.email,
         role: widget.role,
+        token: widget.token,
+      );
+    }
+
+    if (_isClient || _isDeveloper) {
+      return RoleHomeScreen(
+        name: widget.name,
+        role: widget.role,
+        clientId: widget.clientId,
+        memberId: widget.memberId,
         token: widget.token,
       );
     }

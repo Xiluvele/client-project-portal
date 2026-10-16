@@ -1,26 +1,30 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { projectProgress } from '../../domain/catalog'
+import { CHANGE_STATUSES, projectProgress } from '../../domain/catalog'
 import { readPreview } from '../../lib/filePreview'
+import { formatRelative } from '../../lib/format'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/ui/Card'
 import { TextField } from '../../components/ui/Fields'
 import { Modal } from '../../components/ui/Modal'
+import { StatusBadge } from '../../components/ui/StatusBadge'
 import { ActivityHistory } from '../../components/project/ProjectControls'
 import { CommentThread, FileList, FilePreview } from '../../components/project/ProjectWidgets'
 import { useAppState } from '../../state/useAppState'
 
 export function DeveloperProjectPage() {
   const { projectId } = useParams()
-  const { user, projects, clients, addFile } = useAppState()
+  const { user, projects, clients, addFile, changeRequests } = useAppState()
   const project = projects.find((item) => item.id === projectId && (item.memberIds.includes(user?.memberId) || item.tasks.some((task) => task.assigneeId === user?.memberId)))
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState(null)
   const [uploadError, setUploadError] = useState('')
+  const [requestPreview, setRequestPreview] = useState(null)
+  const requests = changeRequests.filter((item) => item.projectId === project?.id)
 
   if (!project) {
-    return <PageIntro title="Project not available" subtitle="You can only open projects you are assigned to." actions={<Link to="/developer/tasks">Back to my tasks</Link>} />
+    return <PageIntro title="Project not available" subtitle="You can only open projects you are assigned to." actions={<Link to="/developer/projects">Back to projects</Link>} />
   }
 
   const closeUpload = () => {
@@ -63,7 +67,7 @@ export function DeveloperProjectPage() {
   return (
     <>
       <PageIntro
-        eyebrow={<Link to="/developer/tasks">My tasks</Link>}
+        eyebrow={<Link to="/developer/projects">Projects</Link>}
         title={project.name}
         subtitle={clients.find((item) => item.id === project.clientId)?.name}
         actions={<div className="progress-pill"><strong>{projectProgress(project)}%</strong><span>Overall progress</span></div>}
@@ -71,6 +75,27 @@ export function DeveloperProjectPage() {
       <div className="page-head__actions" style={{ marginBottom: 14 }}>
         <Button onClick={() => setUploading(true)}>Upload file</Button>
       </div>
+      <Card className="change-requests">
+        <div className="section-head"><h2>Change requests</h2></div>
+        {requests.length === 0 ? <p className="empty">No change requests on this project.</p> : null}
+        {requests.map((request) => (
+          <div className="file-row" key={request.id}>
+            <div className="file-copy">
+              <strong>{request.description}</strong>
+              <small>
+                {project.tasks.find((task) => task.id === request.taskId)?.title ?? 'Task not linked'}
+                {' · '}
+                {formatRelative(request.createdAt)}
+                {request.attachment?.name ? ` · ${request.attachment.name}` : ''}
+              </small>
+            </div>
+            {request.attachment?.previewUrl ? (
+              <Button size="small" variant="secondary" onClick={() => setRequestPreview(request.attachment)}>Preview</Button>
+            ) : null}
+            <StatusBadge status={request.status} label={CHANGE_STATUSES.find((status) => status.id === request.status)?.label} />
+          </div>
+        ))}
+      </Card>
       <div className="split">
         <Card>
           <div className="section-head"><h2>Files & designs</h2></div>
@@ -84,6 +109,11 @@ export function DeveloperProjectPage() {
       <div className="split">
         <ActivityHistory projectId={project.id} />
       </div>
+      <Modal title={requestPreview?.name || 'Preview'} open={Boolean(requestPreview)} onClose={() => setRequestPreview(null)}>
+        <div className="preview-stage">
+          {requestPreview?.previewUrl ? <FilePreview file={requestPreview} large /> : <p className="empty">This file has no preview stored.</p>}
+        </div>
+      </Modal>
       <Modal title="Upload file" open={uploading} onClose={closeUpload}>
         <form className="stack" onSubmit={submitFile}>
           <div className="field">

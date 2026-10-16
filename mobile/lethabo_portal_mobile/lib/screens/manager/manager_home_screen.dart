@@ -150,6 +150,7 @@ class _ManagerHomeScreenState extends State<ManagerHomeScreen> {
           projectId: project['id']?.toString() ?? '',
           token: widget.token,
           summary: project,
+          role: widget.role,
         ),
       ),
     );
@@ -181,6 +182,7 @@ class _ManagerHomeScreenState extends State<ManagerHomeScreen> {
           projectId: created,
           token: widget.token,
           summary: match ?? {'id': created, 'name': 'Project'},
+          role: widget.role,
         ),
       ),
     );

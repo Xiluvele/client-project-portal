@@ -14,12 +14,12 @@ const TEAM_LINKS = [
 
 const CLIENT_LINKS = [
   { to: '/client/dashboard', label: 'Dashboard', icon: 'dashboard' },
-  { to: '/client/projects', label: 'Projects', icon: 'projects' },
   { to: '/client/invoices', label: 'Invoices', icon: 'invoices' },
 ]
 
 const DEVELOPER_LINKS = [
-  { to: '/developer/tasks', label: 'My tasks', icon: 'projects' },
+  { to: '/developer/projects', label: 'Projects', icon: 'projects' },
+  { to: '/developer/tasks', label: 'My tasks', icon: 'dashboard' },
 ]
 
 const NOTIFICATION_PAGE = {

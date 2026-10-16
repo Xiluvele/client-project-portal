@@ -11,6 +11,8 @@ const INVOICE_LABELS = {
   sent: 'Sent',
   pending: 'Sent',
   overdue: 'Overdue',
+  approved: 'Approved',
+  declined: 'Declined',
   paid: 'Paid',
   cancelled: 'Cancelled',
 }
@@ -18,7 +20,7 @@ const INVOICE_LABELS = {
 export function StatusBadge({ status, group = 'project', label }) {
   let text = label
   if (!text) {
-    if (group === 'approval') text = status === 'approved' ? 'Approved' : status === 'pending' ? 'Awaiting approval' : ''
+    if (group === 'approval') text = status === 'approved' ? 'Approved' : status === 'declined' ? 'Declined' : status === 'pending' ? 'Awaiting client' : ''
     else if (group === 'invoice') text = INVOICE_LABELS[status] ?? status
     else text = statusLabel(GROUPS[group] ?? [], status)
   }

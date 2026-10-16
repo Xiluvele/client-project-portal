@@ -25,8 +25,29 @@ export function projectById(projects, projectId) {
   return projects.find((project) => project.id === projectId)
 }
 
+const DEMO_CLIENT_ID = 'nzimz'
+const DEMO_CLIENT_EMAIL = 'nompumelelononhlanhla18@gmail.com'
+
 export function projectsForClient(projects, clientId) {
   return projects.filter((project) => project.clientId === clientId)
+}
+
+export function projectsForMember(projects, memberId) {
+  if (!memberId) return []
+  return projects.filter((project) =>
+    (project.memberIds ?? []).includes(memberId)
+    || (project.tasks ?? []).some((task) => task.assigneeId === memberId),
+  )
+}
+
+export function projectsForSignedInClient(projects, user) {
+  if (!user) return []
+  const own = projectsForClient(projects, user.clientId)
+  if (own.length) return own
+  if (String(user.email ?? '').toLowerCase() === DEMO_CLIENT_EMAIL) {
+    return projectsForClient(projects, DEMO_CLIENT_ID)
+  }
+  return []
 }
 
 // Clients never see drafts

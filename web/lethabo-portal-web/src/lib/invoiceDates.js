@@ -13,10 +13,11 @@ export const addDaysISO = (iso, days) => {
 export const dateLabel = (iso) =>
   iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('en-ZA', { day: '2-digit', month: 'short' }) : ''
 
-// draft | sent | overdue | paid | cancelled
+// draft | sent | overdue | approved | declined | paid | cancelled
 // Old "pending" invoices count as sent. A sent invoice past its due date is overdue.
 export const effectiveStatus = (invoice) => {
   const status = invoice.status === 'pending' ? 'sent' : invoice.status
+  if (status === 'approved' || status === 'declined' || status === 'paid' || status === 'cancelled' || status === 'draft') return status
   return status === 'sent' && invoice.dueAt && invoice.dueAt < todayISO() ? 'overdue' : status
 }
 

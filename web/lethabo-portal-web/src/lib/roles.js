@@ -1,6 +1,6 @@
 export function homeFor(role) {
   if (role === 'client') return '/client/dashboard'
-  if (role === 'developer') return '/developer/tasks'
+  if (role === 'developer') return '/developer/projects'
   if (role === 'administrator') return '/admin/users'
   return '/team/projects'
 }

@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/portal_api.dart';
@@ -6,12 +9,14 @@ class ProjectWorkspaceScreen extends StatefulWidget {
   final String projectId;
   final String token;
   final Map<String, dynamic> summary;
+  final String role;
 
   const ProjectWorkspaceScreen({
     super.key,
     required this.projectId,
     required this.token,
     required this.summary,
+    this.role = 'manager',
   });
 
   @override
@@ -42,7 +47,16 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
   String? _assigningId;
   final _reminded = <String>{};
   final _reply = TextEditingController();
+  final _message = TextEditingController();
+  final _change = TextEditingController();
   final _requirement = TextEditingController();
+  String? _replyToId;
+  String? _changeTaskId;
+  Map<String, dynamic>? _attachment;
+
+  bool get _isClient => widget.role.trim().toLowerCase() == 'client';
+  bool get _isDeveloper => widget.role.trim().toLowerCase() == 'developer';
+  bool get _canManage => !_isClient && !_isDeveloper;
 
   @override
   void initState() {
@@ -54,6 +68,8 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
   @override
   void dispose() {
     _reply.dispose();
+    _message.dispose();
+    _change.dispose();
     _requirement.dispose();
     super.dispose();
   }
@@ -205,12 +221,13 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
     final files = _list('files');
     final comments = _list('comments');
     final invoices = _list('invoices');
-    final requests = _list('changeRequests').where((item) => openDecisions.contains(item['status'])).toList();
+    final requests = _list('changeRequests');
+    final openRequests = requests.where((item) => openDecisions.contains(item['status'])).toList();
     final requirements = _list('requirements');
     final openTasks = tasks.where((task) => task['status'] != 'done').toList();
     final unassigned = openTasks.where((task) => '${task['assigneeId'] ?? ''}'.isEmpty).toList();
     final reviews = openTasks.where((task) => task['status'] == 'in_review').toList();
-    final needs = reviews.length + requests.length + unassigned.where((task) => task['status'] != 'in_review').length;
+    final needs = reviews.length + openRequests.length + unassigned.where((task) => task['status'] != 'in_review').length;
     final progress = _progress(tasks);
     final current = milestones.cast<Map<String, dynamic>?>().firstWhere(
           (item) => item?['status'] != 'complete',
@@ -279,9 +296,9 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                   runSpacing: 8,
                   children: [
                     for (final item in milestones) _pill(item, current?['id'] == item['id']),
-                    if (current != null)
+                    if (_canManage && current != null)
                       _textButton('Mark ${current['name']} complete', () => _act('/api/projects/${widget.projectId}/milestones/${current['id']}/complete')),
-                    _textButton('Add milestone', _addMilestone),
+                    if (_canManage) _textButton('Add milestone', _addMilestone),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -293,18 +310,13 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                   count: needs,
                   child: Column(
                     children: [
-                      for (final request in requests) _row(
-                        title: 'Change request: ${'${request['description'] ?? ''}'.split('.').first}',
-                        meta: 'Outside the agreed requirements',
-                        actions: [
-                          _textButton('Approve', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'approved'})),
-                          _textButton('Reject', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'rejected'})),
-                        ],
-                      ),
+                      for (final request in requests.where((item) => '${item['taskId'] ?? ''}'.isEmpty)) _changeRow(request),
                       if (openTasks.isEmpty && requests.isEmpty) const _Empty('No open tasks.'),
-                      for (final task in openTasks) _taskRow(task),
-                      const SizedBox(height: 8),
-                      _textButton('New task', _addTask),
+                      for (final task in openTasks) _taskBlock(task, requests),
+                      if (_canManage) ...[
+                        const SizedBox(height: 8),
+                        _textButton('New task', _addTask),
+                      ],
                     ],
                   ),
                 ),
@@ -323,10 +335,11 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           title: '${file['name'] ?? ''}',
                           meta: '${file['uploadedBy'] ?? ''} · ${_relative(file['createdAt']?.toString())}',
                           actions: [
+                            if ('${file['previewUrl'] ?? ''}'.isNotEmpty) _textButton('Preview', () => _preview(file)),
                             _badge(file['approval'] == 'pending' ? 'Awaiting client' : '${file['approval'] ?? ''}', file['approval'] == 'approved'),
                           ],
                         ),
-                      _textButton('Upload file', _addFile),
+                      if (_canManage) _textButton('Upload file', _addFile),
                     ],
                   ),
                 ),
@@ -337,16 +350,13 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                   summary: comments.isEmpty ? 'No messages yet' : 'Last message ${_relative(comments.last['createdAt']?.toString())}',
                   child: Column(
                     children: [
-                      if (comments.isEmpty) const _Empty('No messages yet.'),
-                      for (final comment in comments)
-                        _row(
-                          title: '${comment['authorName'] ?? ''} · ${_speaker(comment)}',
-                          meta: '${comment['body'] ?? ''}',
-                        ),
-                      _compose(_reply, 'Write a message', 'Send', () {
-                        final body = _reply.text.trim();
+                      if (comments.where((item) => '${item['replyToId'] ?? ''}'.isEmpty).isEmpty) const _Empty('No messages yet.'),
+                      for (final comment in comments.where((item) => '${item['replyToId'] ?? ''}'.isEmpty))
+                        _messageBlock(comment, comments),
+                      _compose(_message, _isClient ? 'Write a comment' : 'Write a message', 'Send', () {
+                        final body = _message.text.trim();
                         if (body.isEmpty) return;
-                        _reply.clear();
+                        _message.clear();
                         _act('/api/projects/${widget.projectId}/comments', {'body': body});
                       }),
                       for (final item in requirements)
@@ -354,7 +364,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                           title: '${item['text'] ?? ''}',
                           actions: [_badge('${item['status'] ?? ''}', item['status'] == 'confirmed')],
                         ),
-                      _compose(_requirement, 'What was agreed with the client', 'Record', () {
+                      if (_canManage) _compose(_requirement, 'What was agreed with the client', 'Record', () {
                         final text = _requirement.text.trim();
                         if (text.isEmpty) return;
                         _requirement.clear();
@@ -380,7 +390,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                             _badge(_invoiceStatus(invoice), _invoiceStatus(invoice) == 'paid'),
                           ],
                         ),
-                      _textButton('Create invoice', _addInvoice),
+                      if (_canManage) _textButton('Create invoice', _addInvoice),
                     ],
                   ),
                 ),
@@ -451,6 +461,217 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
     );
   }
 
+  Widget _taskBlock(Map<String, dynamic> task, List<Map<String, dynamic>> requests) {
+    final id = '${task['id']}';
+    final mine = requests.where((item) => item['taskId']?.toString() == id).toList();
+    final open = _changeTaskId == id;
+    final waiting = mine.where((item) => openDecisions.contains(item['status'])).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _taskRow(task),
+        Container(
+          margin: const EdgeInsets.only(left: 8, bottom: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF111111),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                dense: true,
+                title: const Text('Change request', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (waiting > 0)
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundColor: yellow,
+                        child: Text('$waiting', style: const TextStyle(color: black, fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
+                    Icon(open ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
+                  ],
+                ),
+                onTap: () => setState(() {
+                  _change.clear();
+                  _attachment = null;
+                  _changeTaskId = open ? null : id;
+                }),
+              ),
+              if (open)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (mine.isEmpty) const _Empty('No change requested for this task yet.'),
+                      for (final request in mine) _changeRow(request),
+                      if (_isClient) ...[
+                        TextField(
+                          controller: _change,
+                          maxLines: 3,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            hintText: 'Describe the change for ${task['title'] ?? 'this task'}',
+                            hintStyle: const TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _textButton('Attach file', _pickAttachment),
+                            if (_attachment != null) Text(_attachment!['name'] ?? '', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            if (_attachment?['previewUrl']?.isNotEmpty == true) _textButton('Preview', () => _preview(_attachment!)),
+                          ],
+                        ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: _textButton('Request', () {
+                            final description = _change.text.trim();
+                            if (description.isEmpty) {
+                              _toast('Describe the change before submitting.');
+                              return;
+                            }
+                            _change.clear();
+                            final attachment = _attachment;
+                            setState(() => _attachment = null);
+                            _act('/api/projects/${widget.projectId}/change-requests', {
+                              'taskId': id,
+                              'description': description,
+                              'attachmentName': attachment?['name'],
+                              'attachmentKind': attachment?['kind'],
+                              'attachmentPreviewUrl': attachment?['previewUrl'],
+                            });
+                          }),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _changeRow(Map<String, dynamic> request) {
+    final waiting = openDecisions.contains(request['status']);
+    final preview = <String, dynamic>{
+      'name': request['attachmentName'],
+      'kind': request['attachmentKind'],
+      'previewUrl': request['attachmentPreviewUrl'],
+    };
+    return _row(
+      title: '${request['description'] ?? ''}',
+      meta: '${request['attachmentName'] ?? 'No file attached'}',
+      actions: [
+        if ('${preview['previewUrl'] ?? preview['name'] ?? ''}'.isNotEmpty && '${request['attachmentName'] ?? ''}'.isNotEmpty)
+          _textButton('Preview', () => _preview(preview)),
+        if (_canManage && waiting) ...[
+          _textButton('Approve', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'approved'})),
+          _textButton('Reject', () => _act('/api/projects/${widget.projectId}/change-requests/${request['id']}', {'status': 'rejected'})),
+        ] else
+          _badge('${request['status'] ?? ''}', request['status'] == 'approved'),
+      ],
+    );
+  }
+
+  Widget _messageBlock(Map<String, dynamic> comment, List<Map<String, dynamic>> comments) {
+    final id = '${comment['id']}';
+    final answers = comments.where((item) => item['replyToId']?.toString() == id).toList();
+    final open = _replyToId == id;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _row(
+          title: '${comment['authorName'] ?? ''} · ${_speaker(comment)}',
+          meta: '${comment['body'] ?? ''}',
+        ),
+        Container(
+          margin: const EdgeInsets.only(left: 8, bottom: 10),
+          decoration: BoxDecoration(color: const Color(0xFF111111), borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: [
+              ListTile(
+                dense: true,
+                title: Text(answers.isEmpty ? 'Reply' : 'Reply · ${answers.length}', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                trailing: Icon(open ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
+                onTap: () => setState(() {
+                  _reply.clear();
+                  _replyToId = open ? null : id;
+                }),
+              ),
+              if (open)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: Column(
+                    children: [
+                      if (answers.isEmpty) const _Empty('No replies to this message yet.'),
+                      for (final answer in answers)
+                        _row(
+                          title: '${answer['authorName'] ?? ''} · ${_speaker(answer)}',
+                          meta: '${answer['body'] ?? ''}',
+                        ),
+                      _compose(_reply, 'Reply to ${comment['authorName'] ?? 'this message'}', 'Send', () {
+                        final body = _reply.text.trim();
+                        if (body.isEmpty) return;
+                        _reply.clear();
+                        _act('/api/projects/${widget.projectId}/comments', {'body': body, 'replyToId': id});
+                      }),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickAttachment() async {
+    final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.custom, allowedExtensions: ['png', 'jpg', 'jpeg', 'webp', 'pdf']);
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    final name = file.name;
+    final lower = name.toLowerCase();
+    final image = lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.webp');
+    String preview = '';
+    final bytes = file.bytes;
+    if (image && bytes != null && bytes.length <= 350000) {
+      final type = lower.endsWith('.png') ? 'png' : lower.endsWith('.webp') ? 'webp' : 'jpeg';
+      preview = 'data:image/$type;base64,${base64Encode(bytes)}';
+    }
+    if (!mounted) return;
+    setState(() => _attachment = {'name': name, 'kind': image ? 'Image' : 'PDF', 'previewUrl': preview});
+  }
+
+  void _preview(Map<String, dynamic> file) {
+    final url = '${file['previewUrl'] ?? ''}';
+    final name = '${file['name'] ?? 'Preview'}';
+    Widget body;
+    if (url.startsWith('data:image')) {
+      final encoded = url.split(',').last;
+      body = Image.memory(base64Decode(encoded), fit: BoxFit.contain);
+    } else if (url.startsWith('http')) {
+      body = Image.network(url, fit: BoxFit.contain);
+    } else {
+      body = Text(url.isEmpty ? '$name has no stored preview.' : '${file['kind'] ?? 'File'} · $name', style: const TextStyle(color: Colors.white));
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: cardColor,
+        title: Text(name, style: const TextStyle(color: Colors.white)),
+        content: SizedBox(width: 320, child: body),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close', style: TextStyle(color: yellow)))],
+      ),
+    );
+  }
+
   Widget _taskRow(Map<String, dynamic> task) {
     final ownerId = '${task['assigneeId'] ?? ''}';
     final owner = _list('members').cast<Map<String, dynamic>?>().firstWhere(
@@ -463,7 +684,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
       title: '${task['title'] ?? ''}',
       meta: owner == null ? 'Unassigned' : '${owner['shortName'] ?? owner['name'] ?? ''}',
       actions: [
-        if (owner == null && _assigningId == id)
+        if (_canManage && owner == null && _assigningId == id)
           DropdownButton<String>(
             dropdownColor: cardColor,
             hint: const Text('Choose', style: TextStyle(color: Colors.grey)),
@@ -480,9 +701,9 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
               _act('/api/projects/${widget.projectId}/tasks/$id/assign', {'assigneeId': value});
             },
           )
-        else if (owner == null)
+        else if (_canManage && owner == null)
           _textButton('Assign', () => setState(() => _assigningId = id)),
-        if (task['status'] == 'in_review')
+        if (_canManage && task['status'] == 'in_review')
           _textButton(
             _reminded.contains(id) ? 'Sent' : 'Remind client',
             _reminded.contains(id)
@@ -492,7 +713,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                     if (mounted) setState(() => _reminded.add(id));
                   },
           ),
-        if (task['status'] == 'in_review')
+        if (_canManage && task['status'] == 'in_review')
           _textButton('Approve', () => _act('/api/projects/${widget.projectId}/tasks/$id/approve')),
         _badge(laneLabel['${task['status']}'] ?? '${task['status']}', task['status'] == 'done'),
       ],

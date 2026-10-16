@@ -158,6 +158,7 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
             entity.Property(item => item.Initials).HasMaxLength(8);
             entity.Property(item => item.Role).HasMaxLength(40);
             entity.Property(item => item.Body).HasMaxLength(2000);
+            entity.Property(item => item.ReplyToId).HasMaxLength(40);
             entity.HasOne(item => item.Project)
                 .WithMany(item => item.Comments)
                 .HasForeignKey(item => item.ProjectId)
@@ -206,6 +207,9 @@ public class PortalDbContext(DbContextOptions<PortalDbContext> options) : DbCont
             entity.Property(item => item.ProjectId).HasMaxLength(40);
             entity.Property(item => item.ClientId).HasMaxLength(40);
             entity.Property(item => item.Description).HasMaxLength(2000);
+            entity.Property(item => item.TaskId).HasMaxLength(40);
+            entity.Property(item => item.AttachmentName).HasMaxLength(260);
+            entity.Property(item => item.AttachmentKind).HasMaxLength(40);
             entity.Property(item => item.Status).HasMaxLength(40);
             entity.HasOne(item => item.Project)
                 .WithMany()

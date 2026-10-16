@@ -221,7 +221,8 @@ app.MapGet("/api/projects", async (PortalDbContext db) =>
             p.StartedLabel,
             p.DueLabel,
             p.DueThisWeek,
-            p.Progress
+            p.Progress,
+            MemberIds = p.Members.Select(member => member.MemberId)
         })
         .ToListAsync();
 
@@ -513,7 +514,16 @@ app.MapPost("/api/projects/{projectId}/comments", async (
     if (!exists) return Results.NotFound(new { message = "Project not found." });
     if (string.IsNullOrWhiteSpace(request.Body)) return Results.BadRequest(new { message = "Write a message first." });
 
-    var name = principal.FindFirstValue(ClaimTypes.Name) ?? "Project manager";
+    string? replyToId = null;
+    if (!string.IsNullOrWhiteSpace(request.ReplyToId))
+    {
+        var parent = await db.ProjectComments.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == request.ReplyToId && item.ProjectId == projectId);
+        if (parent == null) return Results.BadRequest(new { message = "That message could not be found." });
+        replyToId = string.IsNullOrWhiteSpace(parent.ReplyToId) ? parent.Id : parent.ReplyToId;
+    }
+
+    var name = principal.FindFirstValue(ClaimTypes.Name) ?? "Team member";
     db.ProjectComments.Add(new ProjectComment
     {
         Id = Guid.NewGuid().ToString(),
@@ -522,11 +532,45 @@ app.MapPost("/api/projects/{projectId}/comments", async (
         Initials = PersonInitials(name),
         Role = principal.FindFirstValue(ClaimTypes.Role) ?? "manager",
         Body = request.Body.Trim(),
+        ReplyToId = replyToId,
         CreatedAt = DateTime.UtcNow
     });
     await db.SaveChangesAsync();
     return await ProjectWorkspace(db, projectId);
-}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "client", "developer"));
+
+app.MapPost("/api/projects/{projectId}/change-requests", async (
+    string projectId,
+    NewChangeRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Description))
+        return Results.BadRequest(new { message = "Describe the change before submitting." });
+    var task = project.Tasks.FirstOrDefault(item => item.Id == request.TaskId);
+    if (task == null) return Results.BadRequest(new { message = "Choose the task this change belongs to." });
+    if (task.Status == "done") return Results.BadRequest(new { message = "That task is already complete." });
+    if ((request.AttachmentPreviewUrl?.Length ?? 0) > 500_000)
+        return Results.BadRequest(new { message = "That attachment is too large to store." });
+
+    db.ChangeRequests.Add(new ChangeRequest
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = projectId,
+        ClientId = principal.FindFirstValue("clientId") ?? project.ClientId,
+        TaskId = task.Id,
+        Description = request.Description.Trim(),
+        AttachmentName = string.IsNullOrWhiteSpace(request.AttachmentName) ? null : request.AttachmentName.Trim(),
+        AttachmentKind = string.IsNullOrWhiteSpace(request.AttachmentKind) ? null : request.AttachmentKind.Trim(),
+        AttachmentPreviewUrl = string.IsNullOrWhiteSpace(request.AttachmentPreviewUrl) ? null : request.AttachmentPreviewUrl,
+        Status = "submitted",
+        CreatedAt = DateTime.UtcNow
+    });
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
 
 app.MapPost("/api/projects/{projectId}/files", async (
     string projectId,
@@ -1489,8 +1533,8 @@ static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id)
         project.Progress,
         Milestones = project.Milestones.Select(item => new { item.Id, item.Name, item.TargetLabel, item.Status }),
         Tasks = project.Tasks.Select(item => new { item.Id, item.Title, item.Description, item.Type, item.Status, item.AssigneeId, item.DueLabel, item.Overdue }),
-        Files = project.Files.OrderByDescending(item => item.CreatedAt).Select(item => new { item.Id, item.Name, item.Kind, item.UploadedBy, item.CreatedAt, item.Approval }),
-        Comments = project.Comments.OrderBy(item => item.CreatedAt).Select(item => new { item.Id, item.AuthorName, item.Initials, item.Role, item.Body, item.CreatedAt }),
+        Files = project.Files.OrderByDescending(item => item.CreatedAt).Select(item => new { item.Id, item.Name, item.Kind, item.UploadedBy, item.CreatedAt, item.Approval, item.PreviewUrl }),
+        Comments = project.Comments.OrderBy(item => item.CreatedAt).Select(item => new { item.Id, item.AuthorName, item.Initials, item.Role, item.Body, item.ReplyToId, item.CreatedAt }),
         Invoices = invoices.Select(item => new
         {
             item.Id,
@@ -1501,7 +1545,7 @@ static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id)
             item.DueLabel,
             Total = item.Lines.Sum(line => line.Amount)
         }),
-        ChangeRequests = changes.Select(item => new { item.Id, item.Description, item.Status }),
+        ChangeRequests = changes.Select(item => new { item.Id, item.TaskId, item.Description, item.Status, item.AttachmentName, item.AttachmentKind, item.AttachmentPreviewUrl }),
         Requirements = requirements.Select(item => new { item.Id, item.Text, item.Status }),
         Members = project.Members
             .Where(item => item.Member != null)
@@ -1544,7 +1588,8 @@ public record CreateProjectRequest(
 
 public record AssignTaskRequest(string? AssigneeId);
 public record NewTaskRequest(string? Title);
-public record NewCommentRequest(string? Body);
+public record NewCommentRequest(string? Body, string? ReplyToId);
+public record NewChangeRequest(string? TaskId, string? Description, string? AttachmentName, string? AttachmentKind, string? AttachmentPreviewUrl);
 public record NewFileRequest(string? Name);
 public record NewRequirementRequest(string? Text);
 public record DecideRequest(string? Status);

@@ -69,6 +69,11 @@ export function FileList({ project, canApprove = false }) {
 
 export function CommentThread({ project }) {
   const { addComment, members } = useAppState()
+  const [replyToId, setReplyToId] = useState(null)
+  const [reply, setReply] = useState('')
+  const comments = project.comments ?? []
+  const roots = comments.filter((comment) => !comment.replyToId)
+
   const submit = (event) => {
     event.preventDefault()
     const input = event.currentTarget.elements.comment
@@ -76,19 +81,59 @@ export function CommentThread({ project }) {
     addComment(project.id, input.value)
     input.value = ''
   }
+
+  const sendReply = (event) => {
+    event.preventDefault()
+    if (!reply.trim() || !replyToId) return
+    addComment(project.id, reply, replyToId)
+    setReply('')
+  }
+
   return (
     <>
-      {project.comments.length === 0 ? <p className="empty">No comments yet.</p> : null}
-      {project.comments.map((comment) => (
-        <article className="comment" key={comment.id}>
-          <Avatar initials={comment.initials} tone="light" />
-          <div>
-            <strong>{comment.authorName}</strong>
-            <small>{commentSpeaker(comment, members)} · {formatRelative(comment.createdAt)}</small>
-            <p>{comment.body}</p>
-          </div>
-        </article>
-      ))}
+      {roots.length === 0 ? <p className="empty">No comments yet.</p> : null}
+      {roots.map((comment) => {
+        const answers = comments.filter((item) => item.replyToId === comment.id)
+        const answering = replyToId === comment.id
+        return (
+          <article className="comment" key={comment.id}>
+            <Avatar initials={comment.initials} tone="light" />
+            <div>
+              <strong>{comment.authorName}</strong>
+              <small>{commentSpeaker(comment, members)} · {formatRelative(comment.createdAt)}</small>
+              <p>{comment.body}</p>
+              <section className="reply-box">
+                <button
+                  type="button"
+                  className="reply-box__head"
+                  aria-expanded={answering}
+                  onClick={() => {
+                    setReply('')
+                    setReplyToId((current) => (current === comment.id ? null : comment.id))
+                  }}
+                >
+                  <span>{answers.length ? `Reply · ${answers.length}` : 'Reply'}</span>
+                </button>
+                {answering ? (
+                  <div className="reply-box__body">
+                    {answers.map((answer) => (
+                      <div key={answer.id}>
+                        <strong>{answer.authorName} · {commentSpeaker(answer, members)}</strong>
+                        <small>{formatRelative(answer.createdAt)}</small>
+                        <p>{answer.body}</p>
+                      </div>
+                    ))}
+                    <form className="composer" onSubmit={sendReply}>
+                      <input className="field__control" value={reply} onChange={(event) => setReply(event.target.value)} placeholder={`Reply to ${comment.authorName}`} aria-label={`Reply to ${comment.authorName}`} />
+                      <Button type="submit">Send</Button>
+                    </form>
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          </article>
+        )
+      })}
       <form className="composer" onSubmit={submit}>
         <input className="field__control" name="comment" placeholder="Write a comment" aria-label="Write a comment" />
         <Button type="submit">Send</Button>
@@ -97,7 +142,7 @@ export function CommentThread({ project }) {
   )
 }
 
-export function ProjectTable({ projects, clients, members, to, onDelete }) {
+export function ProjectTable({ projects, clients, members, to, onDelete, emptyLabel = 'No projects match this view.' }) {
   const [pending, setPending] = useState(null)
   return (
     <div className="table-wrap">
@@ -154,7 +199,7 @@ export function ProjectTable({ projects, clients, members, to, onDelete }) {
           })}
         </tbody>
       </table>
-      {projects.length === 0 ? <p className="empty">No projects match this view.</p> : null}
+      {projects.length === 0 ? <p className="empty">{emptyLabel}</p> : null}
       <Modal title="Delete project" open={Boolean(pending)} onClose={() => setPending(null)}>
         <p>Delete <strong>{pending?.name}</strong>? The client will no longer see this project, its files, or its invoices.</p>
         <div className="task__actions">

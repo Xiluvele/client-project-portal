@@ -100,6 +100,17 @@ namespace LethaboPortal.Api.Data.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
+                    b.Property<string>("AttachmentKind")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("AttachmentName")
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<string>("AttachmentPreviewUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -120,6 +131,10 @@ namespace LethaboPortal.Api.Data.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("TaskId")
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
 
@@ -518,6 +533,10 @@ namespace LethaboPortal.Api.Data.Migrations
 
                     b.Property<bool>("Read")
                         .HasColumnType("bit");
+
+                    b.Property<string>("ReplyToId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
                     b.Property<string>("Role")
                         .IsRequired()

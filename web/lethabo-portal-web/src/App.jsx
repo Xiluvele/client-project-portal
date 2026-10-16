@@ -8,7 +8,6 @@ import { ProjectWorkspacePage } from './pages/manager/ProjectWorkspacePage'
 import { InvoicesPage } from './pages/manager/InvoicesPage'
 import { TeamPage } from './pages/manager/TeamPage'
 import { ClientDashboardPage } from './pages/client/ClientDashboardPage'
-import { ClientProjectsPage } from './pages/client/ClientProjectsPage'
 import { ClientProjectPage } from './pages/client/ClientProjectPage'
 import { ClientInvoicesPage } from './pages/client/ClientInvoicesPage'
 import { homeFor } from './lib/roles'
@@ -16,6 +15,7 @@ import { useAppState } from './state/useAppState'
 import { UsersPage } from './pages/admin/UsersPage'
 import { AuditTrailPage } from './pages/admin/AuditTrailPage'
 import { DeveloperTasksPage } from './pages/developer/DeveloperTasksPage'
+import { DeveloperProjectsPage } from './pages/developer/DeveloperProjectsPage'
 import { DeveloperProjectPage } from './pages/developer/DeveloperProjectPage'
 import { NotificationsPage } from './pages/shared/NotificationsPage'
 
@@ -54,13 +54,14 @@ export default function App() {
       <Route path="/client" element={<RequireAuth role="client"><AppShell audience="client" /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<ClientDashboardPage />} />
-        <Route path="projects" element={<ClientProjectsPage />} />
+        <Route path="projects" element={<Navigate to="/client/dashboard" replace />} />
         <Route path="projects/:projectId" element={<ClientProjectPage />} />
         <Route path="invoices" element={<ClientInvoicesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="/developer" element={<RequireAuth role="developer"><AppShell audience="developer" /></RequireAuth>}>
-        <Route index element={<Navigate to="tasks" replace />} />
+        <Route index element={<Navigate to="projects" replace />} />
+        <Route path="projects" element={<DeveloperProjectsPage />} />
         <Route path="tasks" element={<DeveloperTasksPage />} />
         <Route path="projects/:projectId" element={<DeveloperProjectPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

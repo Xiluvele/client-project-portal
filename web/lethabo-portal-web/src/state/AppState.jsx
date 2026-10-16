@@ -19,12 +19,11 @@ import {
 const SESSION_KEY = "lethabo-connect-session";
 const USERS_KEY = "lethabo-connect-users-v2";
 const CLIENTS_KEY = "lethabo-connect-clients-v2";
-const DROP_FLAG = "lethabo-connect-drop-readd-v2";
+const DROP_FLAG = "lethabo-connect-drop-readd-v3";
 const DROPPED_EMAILS = new Set([
   "xiluvelotalin@gmail.com",
   "thabedenokubonga5@gmail.com",
   "galarisima986@gmail.com",
-  "nompumelelononhlanhla18@gmail.com",
 ]);
 
 let dropStoredAccounts = null;
@@ -666,8 +665,12 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const addComment = (projectId, body) => {
-    if (!user) return;
+  const addComment = (projectId, body, replyToId = null) => {
+    const text = body?.trim();
+    if (!user || !text) return { ok: false };
+    const project = projects.find((item) => item.id === projectId);
+    const parent = (project?.comments ?? []).find((item) => item.id === replyToId);
+    const rootId = parent ? (parent.replyToId || parent.id) : null;
     const comment = {
       id: createId("comment"),
       authorName:
@@ -682,20 +685,34 @@ export function AppStateProvider({ children }) {
         .join("")
         .toUpperCase(),
       role: user.role,
-      body: body.trim(),
+      body: text,
+      replyToId: rootId,
       createdAt: new Date().toISOString(),
       read: user.role !== "client",
     };
     setProjects((current) =>
-      current.map((project) =>
-        project.id === projectId
-          ? { ...project, comments: [...project.comments, comment] }
-          : project,
+      current.map((item) =>
+        item.id === projectId
+          ? { ...item, comments: [...(item.comments ?? []), comment] }
+          : item,
       ),
     );
-    addActivity(projectId, `${comment.authorName} left a comment`);
-    if (user.role === "client")
-      notify(managerIds(), `${comment.authorName} left feedback.`, projectId);
+    addActivity(
+      projectId,
+      parent
+        ? `${comment.authorName} replied to ${parent.authorName}`
+        : `${comment.authorName} left a comment`,
+    );
+    if (user.role === "client") {
+      notify(
+        managerIds(),
+        parent
+          ? `${comment.authorName} replied to ${parent.authorName}.`
+          : `${comment.authorName} left feedback.`,
+        projectId,
+      );
+    }
+    return { ok: true };
   };
 
   const markProjectCommentsRead = useCallback((projectId) => {
@@ -762,7 +779,7 @@ export function AppStateProvider({ children }) {
       );
   };
 
-  const approveFile = (projectId, fileId) => {
+  const decideFile = (projectId, fileId, approval) => {
     let fileName = "a file";
     setProjects((current) =>
       current.map((project) => {
@@ -772,21 +789,40 @@ export function AppStateProvider({ children }) {
           files: project.files.map((file) => {
             if (file.id !== fileId) return file;
             fileName = file.name;
-            return { ...file, approval: "approved" };
+            return { ...file, approval };
           }),
         };
       }),
     );
     const client = clients.find((item) => item.id === user?.clientId);
+    const verb = approval === "approved" ? "approved" : "declined";
     addActivity(
       projectId,
-      `${client?.name ?? user?.name ?? "Client"} approved ${fileName}`,
+      `${client?.name ?? user?.name ?? "Client"} ${verb} ${fileName}`,
     );
     notify(
       managerIds(),
-      `${client?.name ?? "A client"} approved ${fileName}.`,
+      `${client?.name ?? "A client"} ${verb} ${fileName}.`,
       projectId,
     );
+  };
+
+  const approveFile = (projectId, fileId) => decideFile(projectId, fileId, "approved");
+
+  const decideInvoice = (invoiceId, status) => {
+    const invoice = invoices.find((item) => item.id === invoiceId);
+    if (!invoice) return { ok: false, message: "That invoice could not be found." };
+    const current = effectiveStatus(invoice);
+    if (!["sent", "overdue", "pending"].includes(current)) {
+      return { ok: false, message: "This invoice has already been decided." };
+    }
+    setInvoices((list) =>
+      list.map((item) => (item.id === invoiceId ? { ...item, status } : item)),
+    );
+    const verb = status === "approved" ? "approved" : "declined";
+    addActivity(invoice.projectId, `${user?.name ?? "Client"} ${verb} ${invoice.number}`);
+    notify(managerIds(), `${user?.name ?? "A client"} ${verb} ${invoice.number}.`, invoice.projectId);
+    return { ok: true };
   };
 
   const generateInvoice = ({
@@ -1114,26 +1150,40 @@ export function AppStateProvider({ children }) {
       );
   };
 
-  const submitChangeRequest = (projectId, description) => {
+  const submitChangeRequest = (projectId, taskId, description, attachment = null) => {
     if (!description?.trim())
       return { ok: false, message: "Describe the change before submitting." };
     const project = projects.find((item) => item.id === projectId);
+    const task = (project?.tasks ?? []).find((item) => item.id === taskId);
+    if (!task)
+      return { ok: false, message: "Choose the task this change belongs to." };
+    if (task.status === "done")
+      return { ok: false, message: "That task is already complete." };
+    const file = attachment?.previewUrl
+      ? {
+          name: attachment.name,
+          kind: attachment.kind,
+          previewUrl: attachment.previewUrl,
+        }
+      : null;
     const request = {
       id: createId("change"),
       projectId,
+      taskId: task.id,
       clientId: user?.clientId,
       description: description.trim(),
+      attachment: file,
       status: "submitted",
       createdAt: new Date().toISOString(),
     };
     setChangeRequests((current) => [request, ...current]);
     addActivity(
       projectId,
-      `Change request submitted on ${project?.name ?? "a project"}`,
+      `Change request on “${task.title}”: ${request.description}`,
     );
     notify(
       managerIds(),
-      `${user?.name ?? "A client"} submitted a change request on ${project?.name ?? "a project"}.`,
+      `${user?.name ?? "A client"} requested a change on “${task.title}” in ${project?.name ?? "a project"}.`,
       projectId,
     );
     return { ok: true };
@@ -1493,6 +1543,8 @@ export function AppStateProvider({ children }) {
     markProjectCommentsRead,
     addFile,
     approveFile,
+    decideFile,
+    decideInvoice,
     generateInvoice,
     updateInvoice,
     sendInvoice,
