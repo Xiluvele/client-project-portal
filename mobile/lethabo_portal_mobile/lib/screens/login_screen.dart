@@ -407,7 +407,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                   child: const Text(
                     'Activate account',
-                    style: TextStyle(color: yellow, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: yellow,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
