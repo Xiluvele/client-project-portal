@@ -227,9 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 40),
 
-              // ==================================================
               // EMAIL ADDRESS
-              // ==================================================
               const Text(
                 'Email address',
                 style: TextStyle(
