@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'add_user_screen.dart';
 import 'audit_trail_screen.dart';
+import 'manager/manager_home_screen.dart';
 import 'projects/projects_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -72,6 +73,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isManager) {
+      return ManagerHomeScreen(
+        userId: widget.userId,
+        name: widget.name,
+        email: widget.email,
+        role: widget.role,
+        token: widget.token,
+      );
+    }
+
     return Scaffold(
       backgroundColor: black,
 

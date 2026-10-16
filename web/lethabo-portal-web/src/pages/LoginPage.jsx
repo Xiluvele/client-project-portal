@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EmailOtpStep } from "../components/auth/EmailOtpStep";
 import { Button } from "../components/ui/Button";
-import { TextField } from "../components/ui/Fields";
+import { PasswordField, TextField } from "../components/ui/Fields";
 import { homeFor } from "../lib/roles";
 import { useAppState } from "../state/useAppState";
 
@@ -138,10 +138,9 @@ export function LoginPage() {
               onChange={(event) => setEmail(event.target.value)}
             />
 
-            <TextField
+            <PasswordField
               label="Password"
               name="password"
-              type="password"
               autoComplete="current-password"
               required
               value={password}

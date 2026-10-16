@@ -3,11 +3,9 @@ import { AppShell } from './components/layout/AppShell'
 import { LoginPage } from './pages/LoginPage'
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ActivatePage } from './pages/ActivatePage'
-import { ManagerDashboardPage } from './pages/manager/ManagerDashboardPage'
 import { ProjectsPage } from './pages/manager/ProjectsPage'
 import { ProjectWorkspacePage } from './pages/manager/ProjectWorkspacePage'
 import { InvoicesPage } from './pages/manager/InvoicesPage'
-import { ClientsPage } from './pages/manager/ClientsPage'
 import { TeamPage } from './pages/manager/TeamPage'
 import { ClientDashboardPage } from './pages/client/ClientDashboardPage'
 import { ClientProjectsPage } from './pages/client/ClientProjectsPage'
@@ -43,15 +41,15 @@ export default function App() {
       <Route path="/register" element={<Navigate to="/forgot-password" replace />} />
       <Route path="/activate" element={<ActivatePage />} />
       <Route path="/team" element={<RequireAuth role="manager"><AppShell audience="team" /></RequireAuth>}>
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<ManagerDashboardPage />} />
+        <Route index element={<Navigate to="projects" replace />} />
+        <Route path="dashboard" element={<Navigate to="/team/projects" replace />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:projectId" element={<ProjectWorkspacePage />} />
-        <Route path="clients" element={<ClientsPage />} />
+        <Route path="clients" element={<Navigate to="/team/projects" replace />} />
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="members" element={<TeamPage />} />
-        <Route path="settings" element={<Navigate to="/team/dashboard" replace />} />
+        <Route path="settings" element={<Navigate to="/team/projects" replace />} />
       </Route>
       <Route path="/client" element={<RequireAuth role="client"><AppShell audience="client" /></RequireAuth>}>
         <Route index element={<Navigate to="dashboard" replace />} />

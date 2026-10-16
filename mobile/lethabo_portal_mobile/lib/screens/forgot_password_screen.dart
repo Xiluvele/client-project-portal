@@ -20,7 +20,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _confirm = TextEditingController();
   bool _sent = false;
   bool _loading = false;
-  bool _hide = true;
   String _notice = '';
 
   @override
@@ -136,25 +135,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 maxLength: 6,
               ),
               const SizedBox(height: 18),
-              PortalField(
+              PasswordField(
                 label: 'New password',
                 controller: _password,
                 hint: 'At least 8 characters',
-                obscure: _hide,
-                suffix: IconButton(
-                  onPressed: () => setState(() => _hide = !_hide),
-                  icon: Icon(
-                    _hide ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                    color: Colors.grey,
-                  ),
-                ),
               ),
               const SizedBox(height: 18),
-              PortalField(
+              PasswordField(
                 label: 'Confirm password',
                 controller: _confirm,
                 hint: 'Repeat the password',
-                obscure: _hide,
               ),
             ],
             const SizedBox(height: 24),

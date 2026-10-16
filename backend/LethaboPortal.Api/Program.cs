@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -291,6 +292,38 @@ app.MapPost("/api/projects", async (
 
     db.Projects.Add(project);
 
+    if (request.MemberIds != null)
+    {
+        foreach (var memberId in request.MemberIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct())
+        {
+            var member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == memberId);
+            if (member == null) continue;
+            db.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = project.Id,
+                MemberId = member.Id
+            });
+            member.Allocated = true;
+        }
+    }
+
+    var clientUsers = await db.Users
+        .Where(user => user.ClientId == project.ClientId && user.Active)
+        .ToListAsync();
+
+    foreach (var clientUser in clientUsers)
+    {
+        db.Notifications.Add(new PortalNotification
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserId = clientUser.Id,
+            ProjectId = project.Id,
+            Text = $"{project.Name} is now visible on your account.",
+            Read = false,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
     await db.SaveChangesAsync();
 
 
@@ -316,6 +349,311 @@ app.MapPost("/api/projects", async (
         }
     );
 });
+
+app.MapGet("/api/projects/{id}", async (string id, PortalDbContext db) =>
+    await ProjectWorkspace(db, id));
+
+app.MapGet("/api/team-members", async (PortalDbContext db) =>
+{
+    var members = await db.TeamMembers
+        .AsNoTracking()
+        .OrderBy(member => member.Name)
+        .Select(member => new
+        {
+            member.Id,
+            member.Name,
+            member.ShortName,
+            member.Role,
+            member.Initials,
+            member.Allocated
+        })
+        .ToListAsync();
+
+    return Results.Ok(members);
+});
+
+app.MapGet("/api/notifications", async (ClaimsPrincipal principal, PortalDbContext db) =>
+{
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (string.IsNullOrWhiteSpace(userId)) return Results.Unauthorized();
+
+    var items = await db.Notifications
+        .AsNoTracking()
+        .Where(item => item.UserId == userId)
+        .OrderByDescending(item => item.CreatedAt)
+        .Take(30)
+        .Select(item => new
+        {
+            item.Id,
+            item.Text,
+            item.Read,
+            item.CreatedAt,
+            item.ProjectId
+        })
+        .ToListAsync();
+
+    return Results.Ok(items);
+}).RequireAuthorization();
+
+app.MapPost("/api/notifications/{id}/read", async (
+    string id,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    var notice = await db.Notifications.FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId);
+    if (notice == null) return Results.NotFound(new { message = "Notification not found." });
+    notice.Read = true;
+    await db.SaveChangesAsync();
+    return Results.Ok(new { notice.Id, notice.Read });
+}).RequireAuthorization();
+
+app.MapPost("/api/projects/{projectId}/tasks/{taskId}/assign", async (
+    string projectId,
+    string taskId,
+    AssignTaskRequest request,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
+    if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
+
+    var member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == request.AssigneeId);
+    if (member == null)
+    {
+        var developer = await db.Users.FirstOrDefaultAsync(item => item.Id == request.AssigneeId);
+        if (!string.IsNullOrWhiteSpace(developer?.MemberId))
+            member = await db.TeamMembers.FirstOrDefaultAsync(item => item.Id == developer.MemberId);
+    }
+
+    if (member == null) return Results.BadRequest(new { message = "Choose a developer." });
+
+    task.AssigneeId = member.Id;
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/tasks/{taskId}/approve", async (
+    string projectId,
+    string taskId,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
+    if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
+    task.Status = "done";
+    project.Progress = WorkProgress(project.Tasks);
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/tasks/{taskId}/remind", async (
+    string projectId,
+    string taskId,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    var task = project?.Tasks.FirstOrDefault(item => item.Id == taskId);
+    if (project == null || task == null) return Results.NotFound(new { message = "Task not found." });
+
+    var recipients = await db.Users
+        .Where(user => user.ClientId == project.ClientId && user.Active)
+        .ToListAsync();
+
+    if (recipients.Count == 0)
+        return Results.BadRequest(new { message = "This client has no portal login to notify." });
+
+    foreach (var recipient in recipients)
+    {
+        db.Notifications.Add(new PortalNotification
+        {
+            Id = Guid.NewGuid().ToString(),
+            UserId = recipient.Id,
+            ProjectId = project.Id,
+            Text = $"Please review \"{task.Title}\" on {project.Name}.",
+            Read = false,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
+
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/tasks", async (
+    string projectId,
+    NewTaskRequest request,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Title)) return Results.BadRequest(new { message = "Enter a task title." });
+
+    project.Tasks.Add(new WorkItem
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = project.Id,
+        Title = request.Title.Trim(),
+        Type = "task",
+        Status = "backlog",
+        DueLabel = ""
+    });
+    project.Progress = WorkProgress(project.Tasks);
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/comments", async (
+    string projectId,
+    NewCommentRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
+    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Body)) return Results.BadRequest(new { message = "Write a message first." });
+
+    var name = principal.FindFirstValue(ClaimTypes.Name) ?? "Project manager";
+    db.ProjectComments.Add(new ProjectComment
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = projectId,
+        AuthorName = name,
+        Initials = PersonInitials(name),
+        Role = principal.FindFirstValue(ClaimTypes.Role) ?? "manager",
+        Body = request.Body.Trim(),
+        CreatedAt = DateTime.UtcNow
+    });
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/files", async (
+    string projectId,
+    NewFileRequest request,
+    ClaimsPrincipal principal,
+    PortalDbContext db) =>
+{
+    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
+    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { message = "Enter a file name." });
+
+    db.ProjectFiles.Add(new ProjectFile
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = projectId,
+        Name = request.Name.Trim(),
+        Kind = "file",
+        UploadedBy = principal.FindFirstValue(ClaimTypes.Name) ?? "Project manager",
+        CreatedAt = DateTime.UtcNow,
+        Approval = "pending",
+        Version = 1
+    });
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/requirements", async (
+    string projectId,
+    NewRequirementRequest request,
+    PortalDbContext db) =>
+{
+    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
+    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Text)) return Results.BadRequest(new { message = "Enter what was agreed." });
+
+    db.Requirements.Add(new Requirement
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = projectId,
+        Text = request.Text.Trim(),
+        Status = "recorded"
+    });
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/change-requests/{requestId}", async (
+    string projectId,
+    string requestId,
+    DecideRequest request,
+    PortalDbContext db) =>
+{
+    var change = await db.ChangeRequests.FirstOrDefaultAsync(item => item.Id == requestId && item.ProjectId == projectId);
+    if (change == null) return Results.NotFound(new { message = "Change request not found." });
+    if (request.Status is not ("approved" or "rejected"))
+        return Results.BadRequest(new { message = "Choose approve or reject." });
+
+    change.Status = request.Status;
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/milestones", async (
+    string projectId,
+    NewMilestoneRequest request,
+    PortalDbContext db) =>
+{
+    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
+    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { message = "Enter a milestone name." });
+    if (string.IsNullOrWhiteSpace(request.TargetLabel)) return Results.BadRequest(new { message = "Enter a target date." });
+
+    db.Milestones.Add(new Milestone
+    {
+        Id = Guid.NewGuid().ToString(),
+        ProjectId = projectId,
+        Name = request.Name.Trim(),
+        TargetLabel = request.TargetLabel.Trim(),
+        Status = "planned"
+    });
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/milestones/{milestoneId}/complete", async (
+    string projectId,
+    string milestoneId,
+    PortalDbContext db) =>
+{
+    var milestone = await db.Milestones.FirstOrDefaultAsync(item => item.Id == milestoneId && item.ProjectId == projectId);
+    if (milestone == null) return Results.NotFound(new { message = "Milestone not found." });
+    milestone.Status = "complete";
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+
+app.MapPost("/api/projects/{projectId}/invoices", async (
+    string projectId,
+    NewInvoiceRequest request,
+    PortalDbContext db) =>
+{
+    var project = await db.Projects.FirstOrDefaultAsync(item => item.Id == projectId);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (string.IsNullOrWhiteSpace(request.Title)) return Results.BadRequest(new { message = "Enter an invoice title." });
+    if (request.Amount <= 0) return Results.BadRequest(new { message = "Enter an amount." });
+
+    var invoice = new Invoice
+    {
+        Id = Guid.NewGuid().ToString(),
+        Number = $"INV-{DateTime.UtcNow:yyMMddHHmmss}",
+        ClientId = project.ClientId,
+        ProjectId = project.Id,
+        Title = request.Title.Trim(),
+        Status = "pending",
+        IssuedLabel = ShortDate(DateTime.UtcNow),
+        DueLabel = string.IsNullOrWhiteSpace(request.DueLabel) ? ShortDate(DateTime.UtcNow.AddDays(14)) : request.DueLabel.Trim()
+    };
+    invoice.Lines.Add(new InvoiceLine
+    {
+        Id = Guid.NewGuid().ToString(),
+        Description = invoice.Title,
+        Amount = request.Amount
+    });
+    db.Invoices.Add(invoice);
+    await db.SaveChangesAsync();
+    return await ProjectWorkspace(db, projectId);
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
 
 // ============================================================
@@ -568,6 +906,56 @@ app.MapPost("/api/auth/email-code", async (
         });
     }
 });
+
+
+// ------------------------------------------------------------
+// POST: /api/invoices/payment-reminder
+// ------------------------------------------------------------
+// Uses the same Gmail mailbox as account activation. A manager
+// asks the API to email the client that a sent invoice is due.
+app.MapPost("/api/invoices/payment-reminder", async (
+    PaymentReminderRequest request,
+    PortalMailer mailer,
+    CancellationToken cancellationToken) =>
+{
+    var email = request.Email?.Trim() ?? "";
+    var number = request.InvoiceNumber?.Trim() ?? "";
+    if (!email.Contains('@') || string.IsNullOrWhiteSpace(number))
+    {
+        return Results.BadRequest(new { sent = false, message = "A client email and invoice number are required." });
+    }
+
+    if (!mailer.IsConfigured)
+    {
+        return Results.Ok(new
+        {
+            sent = false,
+            message = "Gmail is not connected on the API, so the reminder was not emailed."
+        });
+    }
+
+    try
+    {
+        await mailer.SendPaymentReminderAsync(
+            email,
+            request.Name?.Trim() ?? "",
+            number,
+            request.ProjectName?.Trim() ?? "",
+            request.Amount?.Trim() ?? "",
+            request.DueLabel?.Trim() ?? "",
+            request.Link,
+            cancellationToken);
+        return Results.Ok(new { sent = true, message = "" });
+    }
+    catch (Exception)
+    {
+        return Results.Ok(new
+        {
+            sent = false,
+            message = "Gmail rejected the message. Check the app password."
+        });
+    }
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
 
 // ------------------------------------------------------------
@@ -1018,6 +1406,110 @@ static string RoleTitle(string role) => role switch
     _ => "Client",
 };
 
+static string ShortDate(DateTime date) => date.ToString("dd MMM", CultureInfo.InvariantCulture);
+
+static string PersonInitials(string name)
+{
+    var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    return string.Concat(parts.Take(2).Select(part => char.ToUpperInvariant(part[0])));
+}
+
+static int WorkProgress(IEnumerable<WorkItem> tasks)
+{
+    var list = tasks.ToList();
+    if (list.Count == 0) return 0;
+    double total = 0;
+    foreach (var task in list)
+    {
+        total += task.Status switch
+        {
+            "backlog" => 0.08,
+            "in_progress" => 0.55,
+            "in_review" => 0.82,
+            "done" => 1,
+            _ => 0
+        };
+    }
+
+    return (int)Math.Round(total / list.Count * 100);
+}
+
+static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id)
+{
+    var project = await db.Projects
+        .AsNoTracking()
+        .Include(item => item.Client)
+        .Include(item => item.Milestones)
+        .Include(item => item.Tasks)
+        .Include(item => item.Files)
+        .Include(item => item.Comments)
+        .Include(item => item.Members)
+        .ThenInclude(item => item.Member)
+        .FirstOrDefaultAsync(item => item.Id == id);
+
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+
+    var developers = await db.Users
+        .AsNoTracking()
+        .Where(user => user.Role == "developer" && user.Active)
+        .OrderBy(user => user.Name)
+        .Select(user => new { user.Id, user.Name, user.MemberId })
+        .ToListAsync();
+
+    var invoices = await db.Invoices
+        .AsNoTracking()
+        .Include(item => item.Lines)
+        .Where(item => item.ProjectId == id)
+        .ToListAsync();
+
+    var changes = await db.ChangeRequests
+        .AsNoTracking()
+        .Where(item => item.ProjectId == id)
+        .OrderByDescending(item => item.CreatedAt)
+        .ToListAsync();
+
+    var requirements = await db.Requirements
+        .AsNoTracking()
+        .Where(item => item.ProjectId == id)
+        .ToListAsync();
+
+    return Results.Ok(new
+    {
+        project.Id,
+        project.ClientId,
+        ClientName = project.Client != null ? project.Client.Name : "",
+        project.Name,
+        project.Service,
+        project.Description,
+        project.Status,
+        project.Stage,
+        project.StartedLabel,
+        project.DueLabel,
+        project.DueThisWeek,
+        project.Progress,
+        Milestones = project.Milestones.Select(item => new { item.Id, item.Name, item.TargetLabel, item.Status }),
+        Tasks = project.Tasks.Select(item => new { item.Id, item.Title, item.Description, item.Type, item.Status, item.AssigneeId, item.DueLabel, item.Overdue }),
+        Files = project.Files.OrderByDescending(item => item.CreatedAt).Select(item => new { item.Id, item.Name, item.Kind, item.UploadedBy, item.CreatedAt, item.Approval }),
+        Comments = project.Comments.OrderBy(item => item.CreatedAt).Select(item => new { item.Id, item.AuthorName, item.Initials, item.Role, item.Body, item.CreatedAt }),
+        Invoices = invoices.Select(item => new
+        {
+            item.Id,
+            item.Number,
+            item.Title,
+            item.Status,
+            item.IssuedLabel,
+            item.DueLabel,
+            Total = item.Lines.Sum(line => line.Amount)
+        }),
+        ChangeRequests = changes.Select(item => new { item.Id, item.Description, item.Status }),
+        Requirements = requirements.Select(item => new { item.Id, item.Text, item.Status }),
+        Members = project.Members
+            .Where(item => item.Member != null)
+            .Select(item => new { item.Member!.Id, item.Member.Name, item.Member.ShortName, item.Member.Role, item.Member.Initials }),
+        Developers = developers
+    });
+}
+
 // ============================================================
 // REQUEST MODELS
 // ============================================================
@@ -1046,8 +1538,18 @@ public record CreateProjectRequest(
     string StartedLabel,
     string DueLabel,
     bool DueThisWeek,
-    int Progress
+    int Progress,
+    string[]? MemberIds = null
 );
+
+public record AssignTaskRequest(string? AssigneeId);
+public record NewTaskRequest(string? Title);
+public record NewCommentRequest(string? Body);
+public record NewFileRequest(string? Name);
+public record NewRequirementRequest(string? Text);
+public record DecideRequest(string? Status);
+public record NewMilestoneRequest(string? Name, string? TargetLabel);
+public record NewInvoiceRequest(string? Title, decimal Amount, string? DueLabel);
 
 
 // ------------------------------------------------------------
@@ -1063,6 +1565,16 @@ public record CreateProjectRequest(
 public record LoginRequest(
     string Email,
     string Password
+);
+
+public record PaymentReminderRequest(
+    string Email,
+    string? Name,
+    string InvoiceNumber,
+    string? ProjectName,
+    string? Amount,
+    string? DueLabel,
+    string? Link
 );
 
 public record EmailCodeRequest(

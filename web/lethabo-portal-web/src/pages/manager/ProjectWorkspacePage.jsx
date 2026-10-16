@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { PROJECT_STATUSES, projectProgress } from '../../domain/catalog'
+import { PROJECT_STATUSES } from '../../domain/catalog'
 import { readPreview } from '../../lib/filePreview'
 import { PageIntro } from '../../components/layout/AppShell'
 import { Button } from '../../components/ui/Button'
-import { Card } from '../../components/ui/Card'
 import { SelectField, TextField } from '../../components/ui/Fields'
 import { Modal } from '../../components/ui/Modal'
-import { CommentThread, FileList, FilePreview, TaskBoard } from '../../components/project/ProjectWidgets'
-import { ActivityHistory, ChangeRequestPanel, MilestonePanel, NewTaskModal, RequirementPanel } from '../../components/project/ProjectControls'
+import { ProjectBrief } from '../../components/project/ProjectBrief'
+import { FilePreview } from '../../components/project/ProjectWidgets'
+import { NewTaskModal } from '../../components/project/ProjectControls'
 import { useAppState } from '../../state/useAppState'
 
 export function ProjectWorkspacePage() {
@@ -31,7 +31,6 @@ export function ProjectWorkspacePage() {
     )
   }
 
-  const progress = projectProgress(project)
   const closeUpload = () => {
     setUploading(false)
     setPreview(null)
@@ -76,42 +75,12 @@ export function ProjectWorkspacePage() {
         title={project.name}
         meta={<><span>{client?.name}</span><span>Started {project.startedLabel}</span><span>Due {project.dueLabel}</span></>}
         actions={(
-          <>
-            <div className="progress-pill">
-              <strong>{progress}%</strong>
-              <span>Overall Progress</span>
-            </div>
-            <Button variant="secondary" onClick={() => setAddingTask(true)}>New task</Button>
-            <Button variant="secondary" onClick={() => setUploading(true)}>Upload file</Button>
-            <Link className="btn btn--primary" to={`/team/invoices?project=${project.id}`}>Create invoice</Link>
-          </>
+          <SelectField aria-label="Project status" value={project.status} onChange={(event) => updateProject(project.id, { status: event.target.value })}>
+            {PROJECT_STATUSES.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
+          </SelectField>
         )}
       />
-      <div className="filters">
-        <SelectField aria-label="Project status" value={project.status} onChange={(event) => updateProject(project.id, { status: event.target.value })}>
-          {PROJECT_STATUSES.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
-        </SelectField>
-      </div>
-      <section className="overview">
-        <h2 className="overview__title">Project overview</h2>
-        <div className="overview-grid">
-          <Card>
-            <div className="section-head"><h2>Client comments</h2></div>
-            <CommentThread project={project} />
-          </Card>
-          <ActivityHistory projectId={project.id} />
-          <MilestonePanel project={project} />
-          <RequirementPanel project={project} canRecord />
-        </div>
-      </section>
-      {project.tasks.length ? <TaskBoard project={project} /> : <Card><p className="empty">No tasks on this project yet.</p></Card>}
-      <div className="split">
-        <ChangeRequestPanel project={project} canDecide />
-        <Card>
-          <div className="section-head"><h2>Files & Designs</h2></div>
-          <FileList project={project} />
-        </Card>
-      </div>
+      <ProjectBrief project={project} onNewTask={() => setAddingTask(true)} onUpload={() => setUploading(true)} />
       <Modal title="Upload file" open={uploading} onClose={closeUpload}>
         <form className="stack" onSubmit={submitFile}>
           <div className="field">

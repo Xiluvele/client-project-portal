@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { TextField } from "../components/ui/Fields";
+import { PasswordField, TextField } from "../components/ui/Fields";
 import { homeFor } from "../lib/roles";
 import { useAppState } from "../state/useAppState";
 
@@ -135,9 +135,9 @@ export function ActivatePage() {
             placeholder="6-digit code"
           />
 
-          <TextField
+          <PasswordField
             label="New password"
-            type="password"
+            name="password"
             autoComplete="new-password"
             minLength={8}
             required
@@ -145,9 +145,9 @@ export function ActivatePage() {
             onChange={(event) => setPassword(event.target.value)}
           />
 
-          <TextField
+          <PasswordField
             label="Confirm password"
-            type="password"
+            name="confirm"
             autoComplete="new-password"
             minLength={8}
             required

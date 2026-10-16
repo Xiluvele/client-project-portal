@@ -52,25 +52,27 @@ export function MilestonePanel({ project }) {
       <div className="section-head"><h2>Milestones</h2></div>
       {milestones.length === 0 ? <p className="empty">No milestones yet. Add the planned stages for this project.</p> : null}
       {milestones.map((milestone) => (
-        <div className="file-row" key={milestone.id}>
+        <div className="track-row" key={milestone.id}>
           <div className="file-copy">
             <strong>{milestone.name}</strong>
             <small>{milestone.targetLabel || 'No target date'}</small>
           </div>
           <StatusBadge status={milestone.status === 'complete' ? 'confirmed' : 'recorded'} label={milestone.status === 'complete' ? 'Complete' : 'Planned'} />
-          <Button size="small" variant="secondary" onClick={() => startEdit(milestone)}>Edit</Button>
-          {milestone.status !== 'complete' ? (
-            <Button size="small" onClick={() => completeMilestone(project.id, milestone.id)}>Mark complete</Button>
-          ) : null}
+          <div className="task__actions">
+            <Button size="small" variant="secondary" onClick={() => startEdit(milestone)}>Edit</Button>
+            {milestone.status !== 'complete' ? (
+              <Button size="small" onClick={() => completeMilestone(project.id, milestone.id)}>Mark complete</Button>
+            ) : null}
+          </div>
         </div>
       ))}
-      <form className="stack" onSubmit={submit} noValidate>
+      <form className="inline-fields" onSubmit={submit} noValidate>
         {message ? <p className={errors.name || errors.targetLabel ? 'field__error' : 'notice'}>{message}</p> : null}
         <TextField label="Milestone name" value={name} error={errors.name} onChange={(event) => { setName(event.target.value); setErrors((current) => ({ ...current, name: undefined })) }} placeholder="Design" />
         <TextField label="Target date" value={targetLabel} error={errors.targetLabel} onChange={(event) => { setTargetLabel(event.target.value); setErrors((current) => ({ ...current, targetLabel: undefined })) }} placeholder="12 Sep" />
         <div className="task__actions">
-          <Button type="submit">{editingId ? 'Save milestone' : 'Add milestone'}</Button>
-          {editingId ? <Button type="button" variant="secondary" onClick={reset}>Cancel edit</Button> : null}
+          <Button type="submit">{editingId ? 'Save' : 'Add'}</Button>
+          {editingId ? <Button type="button" variant="secondary" onClick={reset}>Cancel</Button> : null}
         </div>
       </form>
     </Card>
@@ -119,7 +121,7 @@ export function RequirementPanel({ project, canRecord = false, canConfirm = fals
         <form className="stack" onSubmit={submit}>
           {error ? <p className="field__error">{error}</p> : null}
           <TextField label="Requirement" value={text} onChange={(event) => setText(event.target.value)} placeholder="What was agreed with the client" />
-          <Button type="submit">Record requirement</Button>
+          <Button type="submit" block>Record requirement</Button>
         </form>
       ) : null}
     </Card>

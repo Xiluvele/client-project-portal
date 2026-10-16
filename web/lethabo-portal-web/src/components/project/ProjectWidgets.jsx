@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
-import { LANE_MOVE, TASK_LANES, projectProgress } from '../../domain/catalog'
+import { commentSpeaker, projectProgress } from '../../domain/catalog'
 import { formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
 import { Avatar, AvatarStack } from '../ui/Avatar'
@@ -37,56 +37,6 @@ const TrashIcon = () => (
   </svg>
 )
 
-export function TaskBoard({ project }) {
-  const { members, moveTask } = useAppState()
-  return (
-    <div className="board">
-      {TASK_LANES.map((lane) => {
-        const tasks = project.tasks.filter((task) => task.status === lane.id)
-        return (
-          <section key={lane.id} className="lane" aria-label={lane.label}>
-            <div className="lane__head">
-              <span>{lane.label.toUpperCase()}</span>
-              <span className="badge badge--count">{tasks.length}</span>
-            </div>
-            {tasks.length === 0 ? <p className="empty">Nothing in this lane</p> : null}
-            {tasks.map((task) => {
-              const assignee = members.find((member) => member.id === task.assigneeId)
-              const move = LANE_MOVE[task.status]
-              return (
-                <article key={task.id} className="task">
-                  <StatusBadge
-                    status={task.status === 'done' ? 'done' : task.type}
-                    group={task.status === 'done' ? 'project' : 'task'}
-                    label={task.status === 'done' ? 'Done' : undefined}
-                  />
-                  <h3>{task.title}</h3>
-                  <div className="task__foot">
-                    <span>{task.dueLabel}</span>
-                    {assignee ? <Avatar initials={assignee.initials} /> : null}
-                  </div>
-                  <div className="task__actions">
-                    {move.previous ? (
-                      <Button size="small" variant="secondary" onClick={() => moveTask(project.id, task.id, move.previous)}>
-                        {move.previousLabel}
-                      </Button>
-                    ) : null}
-                    {move.next ? (
-                      <Button size="small" onClick={() => moveTask(project.id, task.id, move.next)}>
-                        {move.nextLabel}
-                      </Button>
-                    ) : null}
-                  </div>
-                </article>
-              )
-            })}
-          </section>
-        )
-      })}
-    </div>
-  )
-}
-
 export function FilePreview({ file, large = false }) {
   if (!file?.previewUrl) return null
   const image = file.previewUrl.startsWith('data:image') || file.kind === 'Image'
@@ -118,7 +68,7 @@ export function FileList({ project, canApprove = false }) {
 }
 
 export function CommentThread({ project }) {
-  const { addComment } = useAppState()
+  const { addComment, members } = useAppState()
   const submit = (event) => {
     event.preventDefault()
     const input = event.currentTarget.elements.comment
@@ -134,7 +84,7 @@ export function CommentThread({ project }) {
           <Avatar initials={comment.initials} tone="light" />
           <div>
             <strong>{comment.authorName}</strong>
-            <small>{formatRelative(comment.createdAt)}</small>
+            <small>{commentSpeaker(comment, members)} · {formatRelative(comment.createdAt)}</small>
             <p>{comment.body}</p>
           </div>
         </article>

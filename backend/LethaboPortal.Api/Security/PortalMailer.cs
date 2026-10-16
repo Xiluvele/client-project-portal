@@ -11,11 +11,6 @@ public sealed class PortalMailer(IConfiguration configuration, ILogger<PortalMai
 
     public async Task SendCodeAsync(string to, string name, string code, string purpose, string? link, CancellationToken cancellationToken)
     {
-        var host = configuration["Email:Host"] ?? "smtp.gmail.com";
-        var port = int.TryParse(configuration["Email:Port"], out var parsed) ? parsed : 587;
-        var user = configuration["Email:User"] ?? "";
-        var password = configuration["Email:AppPassword"] ?? "";
-        var fromName = configuration["Email:FromName"] ?? "Lethabo M Connect";
         var greeting = string.IsNullOrWhiteSpace(name) ? "Hello" : $"Hello {name}";
         var page = string.IsNullOrWhiteSpace(link) ? "the portal" : link;
         var (subject, body) = purpose switch
@@ -30,6 +25,40 @@ public sealed class PortalMailer(IConfiguration configuration, ILogger<PortalMai
                 "Your Lethabo M Connect sign-in code",
                 $"{greeting},\n\nYour 6-digit sign-in code is {code}.\nIt expires in 10 minutes.\n\nLethabo M Solutions\n"),
         };
+
+        await SendAsync(to, subject, body, cancellationToken);
+    }
+
+    public Task SendPaymentReminderAsync(
+        string to,
+        string name,
+        string invoiceNumber,
+        string projectName,
+        string amount,
+        string dueLabel,
+        string? link,
+        CancellationToken cancellationToken)
+    {
+        var greeting = string.IsNullOrWhiteSpace(name) ? "Hello" : $"Hello {name}";
+        var work = string.IsNullOrWhiteSpace(projectName) ? "" : $" for {projectName}";
+        var page = string.IsNullOrWhiteSpace(link) ? "the portal" : link;
+        var body =
+            $"{greeting},\n\n" +
+            $"Invoice {invoiceNumber}{work} is waiting for payment.\n" +
+            $"Amount: {amount}\n" +
+            $"Due: {dueLabel}\n\n" +
+            $"Please sign in and complete the payment:\n{page}\n\n" +
+            "Lethabo M Solutions\n";
+        return SendAsync(to, $"Payment due for invoice {invoiceNumber}", body, cancellationToken);
+    }
+
+    private async Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken)
+    {
+        var host = configuration["Email:Host"] ?? "smtp.gmail.com";
+        var port = int.TryParse(configuration["Email:Port"], out var parsed) ? parsed : 587;
+        var user = configuration["Email:User"] ?? "";
+        var password = configuration["Email:AppPassword"] ?? "";
+        var fromName = configuration["Email:FromName"] ?? "Lethabo M Connect";
 
         using var message = new MailMessage
         {
@@ -53,7 +82,7 @@ public sealed class PortalMailer(IConfiguration configuration, ILogger<PortalMai
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Could not email a sign-in code to {Email}.", to);
+            logger.LogWarning(ex, "Could not send portal email to {Email}.", to);
             throw;
         }
     }

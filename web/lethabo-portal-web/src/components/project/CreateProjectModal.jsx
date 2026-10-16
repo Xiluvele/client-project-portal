@@ -8,7 +8,7 @@ import { Button } from '../ui/Button'
 import { SelectField, TextField } from '../ui/Fields'
 import { Modal } from '../ui/Modal'
 
-const EMPTY = { clientId: '', name: '', description: '', dueLabel: '', service: '' }
+const EMPTY = { clientId: '', name: '', description: '', dueAt: '', service: '' }
 
 export function CreateProjectModal({ open, onClose }) {
   const { clients, members, createProject } = useAppState()
@@ -72,7 +72,7 @@ export function CreateProjectModal({ open, onClose }) {
           <option value="">Select a Lethabo M Solutions service</option>
           {COMPANY_SERVICES.map((service) => <option key={service.id} value={service.label}>{service.label}</option>)}
         </SelectField>
-        <TextField label="Due date" name="dueLabel" value={form.dueLabel} error={errors.dueLabel} onChange={(event) => setField('dueLabel', event.target.value)} placeholder="12 Oct" />
+        <TextField label="Due date" name="dueAt" type="date" value={form.dueAt} error={errors.dueAt} onChange={(event) => setField('dueAt', event.target.value)} />
         <div className="field">
           <span className="field__label">Project file</span>
           <input className="field__control" type="file" accept="image/*,.pdf,.doc,.docx" onChange={onBrief} />

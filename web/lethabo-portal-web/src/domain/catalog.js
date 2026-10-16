@@ -85,3 +85,20 @@ export function projectProgress(project) {
 export function statusLabel(list, id) {
   return list.find((item) => item.id === id)?.label ?? id
 }
+
+const COMMENT_SPEAKERS = {
+  client: 'Client',
+  developer: 'Developer',
+  manager: 'Project manager',
+  administrator: 'Administrator',
+}
+
+export function commentSpeaker(comment, members = []) {
+  if (COMMENT_SPEAKERS[comment?.role]) return COMMENT_SPEAKERS[comment.role]
+  const member = members.find((item) => item.initials === comment?.initials)
+  if (!member?.role) return 'Team'
+  if (/develop/i.test(member.role)) return 'Developer'
+  if (/manager/i.test(member.role)) return 'Project manager'
+  if (/design/i.test(member.role)) return 'Designer'
+  return member.role
+}

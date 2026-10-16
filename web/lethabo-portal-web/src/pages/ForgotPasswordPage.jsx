@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
-import { TextField } from "../components/ui/Fields";
+import { PasswordField, TextField } from "../components/ui/Fields";
 import { requestPasswordReset, resetPassword } from "../lib/passwordReset";
 
 export function ForgotPasswordPage() {
@@ -127,20 +127,18 @@ export function ForgotPasswordPage() {
                 }
                 placeholder="6-digit code"
               />
-              <TextField
+              <PasswordField
                 label="New password"
                 name="password"
-                type="password"
                 autoComplete="new-password"
                 minLength={8}
                 required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              <TextField
+              <PasswordField
                 label="Confirm password"
                 name="confirm"
-                type="password"
                 autoComplete="new-password"
                 minLength={8}
                 required

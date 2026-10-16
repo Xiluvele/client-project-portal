@@ -25,6 +25,22 @@ export function Icon({ name, className = 'icon' }) {
       return <svg {...common}><path d="M6 16h12l-1-2v-4a5 5 0 0 0-10 0v4z" /><path d="M10 18a2 2 0 0 0 4 0" /></svg>
     case 'menu':
       return <svg {...common}><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+    case 'chevron':
+      return <svg {...common}><path d="m6 9 6 6 6-6" /></svg>
+    case 'check':
+      return <svg {...common}><path d="m5 12 5 5L20 7" /></svg>
+    case 'clipboard':
+      return <svg {...common}><rect x="7" y="4" width="10" height="16" rx="2" /><path d="M9 4h6v2H9zM9 11h6M9 15h4" /></svg>
+    case 'folder':
+      return <svg {...common}><path d="M3 7.5h5l2 2H21V19H3z" /></svg>
+    case 'chat':
+      return <svg {...common}><path d="M5 6h14v9H8l-3 3z" /></svg>
+    case 'clock':
+      return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>
+    case 'eye':
+      return <svg {...common}><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="2.5" /></svg>
+    case 'eye-off':
+      return <svg {...common}><path d="M3 3l18 18" /><path d="M10.6 6.2A11 11 0 0 1 12 6c6.5 0 10 6 10 6a18 18 0 0 1-3.1 3.7" /><path d="M6.1 8.1C3.7 9.9 2 12 2 12s3.5 6 10 6c1.1 0 2.2-.2 3.2-.5" /><path d="M9.9 9.9a2.5 2.5 0 0 0 3.2 3.2" /></svg>
     default:
       return null
   }

@@ -145,9 +145,9 @@ export function InvoicesPage() {
     closeView()
   }
 
-  const handleRemind = (invoice) => {
-    const result = remindInvoice(invoice.id)
-    setNotice(result.ok ? `Reminder sent to the client for #${invoice.number}.` : result.message)
+  const handleRemind = async (invoice) => {
+    const result = await remindInvoice(invoice.id)
+    setNotice(result.message)
   }
 
   const handleCancel = (invoice) => {

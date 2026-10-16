@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppStateContext } from "./useAppState";
 import { teamMembers, cloneSeed } from "../data/seed";
-import { createId } from "../lib/format";
+import { createId, formatRand } from "../lib/format";
 import { PORTAL_URL } from "../lib/api";
 import { activateRemote, createPendingAccount } from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
-import { emailSignInCode } from "../lib/mailCode";
+import { emailPaymentReminder, emailSignInCode } from "../lib/mailCode";
 import { assessOtp, createOtpChallenge } from "../lib/otp";
 import { roleLabel } from "../lib/roles";
 import {
   addDaysISO,
   dateLabel,
   effectiveStatus,
+  invoiceTotal,
   todayISO,
 } from "../lib/invoiceDates";
 
@@ -448,7 +449,7 @@ export function AppStateProvider({ children }) {
     clientId,
     name,
     service,
-    dueLabel,
+    dueAt,
     memberIds,
     description,
     brief,
@@ -459,7 +460,7 @@ export function AppStateProvider({ children }) {
         "Select a client. The project cannot be saved without one.";
     if (!name?.trim()) errors.name = "Enter a project title.";
     if (!description?.trim()) errors.description = "Enter a description.";
-    if (!dueLabel?.trim()) errors.dueLabel = "Enter a due date.";
+    if (!dueAt) errors.dueAt = "Choose a due date.";
     if (!service)
       errors.service = "Select a service offered by Lethabo M Solutions.";
     if (!memberIds?.length) errors.memberIds = "Select an available developer.";
@@ -476,8 +477,9 @@ export function AppStateProvider({ children }) {
         day: "2-digit",
         month: "short",
       }),
-      dueLabel: dueLabel.trim(),
-      dueThisWeek: false,
+      dueAt,
+      dueLabel: dateLabel(dueAt),
+      dueThisWeek: dueAt >= todayISO() && dueAt <= addDaysISO(todayISO(), 7),
       progress: 8,
       memberIds,
       description: description.trim(),
@@ -615,6 +617,55 @@ export function AppStateProvider({ children }) {
     return task;
   };
 
+  const assignTask = (projectId, taskId, assigneeId) => {
+    const project = projects.find((item) => item.id === projectId);
+    const task = project?.tasks.find((item) => item.id === taskId);
+    const developer = users.find(
+      (item) =>
+        item.role === "developer" &&
+        item.active !== false &&
+        (item.memberId || item.id) === assigneeId,
+    );
+    if (!task || !developer) return { ok: false, message: "Choose a developer." };
+    setProjects((current) =>
+      current.map((item) =>
+        item.id === projectId
+          ? {
+              ...item,
+              tasks: item.tasks.map((entry) =>
+                entry.id === taskId
+                  ? { ...entry, assigneeId: developer.memberId || developer.id }
+                  : entry,
+              ),
+            }
+          : item,
+      ),
+    );
+    addActivity(projectId, `${task.title} assigned to ${developer.name}`);
+    notify(
+      [developer.id],
+      `You were assigned “${task.title}” on ${project?.name ?? "a project"}.`,
+      projectId,
+    );
+    return { ok: true };
+  };
+
+  const nudgeClient = (projectId, taskId) => {
+    const project = projects.find((item) => item.id === projectId);
+    const task = project?.tasks.find((item) => item.id === taskId);
+    const recipients = clientUserIds(project?.clientId);
+    if (!task || !recipients.length) {
+      return { ok: false, message: "This client has no portal login to notify." };
+    }
+    notify(
+      recipients,
+      `Please review “${task.title}” on ${project.name}.`,
+      projectId,
+    );
+    addActivity(projectId, `Client nudged about ${task.title}`);
+    return { ok: true };
+  };
+
   const addComment = (projectId, body) => {
     if (!user) return;
     const comment = {
@@ -630,7 +681,7 @@ export function AppStateProvider({ children }) {
         .slice(0, 2)
         .join("")
         .toUpperCase(),
-      role: user.role === "client" ? "client" : "team",
+      role: user.role,
       body: body.trim(),
       createdAt: new Date().toISOString(),
       read: user.role !== "client",
@@ -883,27 +934,59 @@ export function AppStateProvider({ children }) {
     return { ok: true };
   };
 
-  const remindInvoice = (invoiceId) => {
+  const remindInvoice = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
     if (!invoice || !["sent", "overdue"].includes(effectiveStatus(invoice))) {
       return { ok: false, message: "Only sent invoices can have a reminder." };
     }
+    const client = clients.find((item) => item.id === invoice.clientId);
+    const clientUser = users.find(
+      (item) =>
+        item.role === "client" &&
+        item.clientId === invoice.clientId &&
+        item.active !== false,
+    );
+    const email = client?.email || clientUser?.email;
+    if (!email) {
+      return { ok: false, message: "This client has no email address for a payment reminder." };
+    }
+    if (!session?.token) {
+      return { ok: false, message: "Sign in again before sending a payment reminder." };
+    }
+
+    const project = projects.find((item) => item.id === invoice.projectId);
+    const delivery = await emailPaymentReminder({
+      token: session.token,
+      email,
+      name: client?.contact || clientUser?.name || client?.name || "",
+      invoiceNumber: invoice.number,
+      projectName: project?.name ?? "",
+      amount: formatRand(invoiceTotal(invoice)),
+      dueLabel: invoice.dueLabel,
+      link: `${PORTAL_URL}/client/invoices`,
+    });
+    if (!delivery.sent) {
+      return {
+        ok: false,
+        message: delivery.message || "The payment reminder could not be emailed.",
+      };
+    }
+
     setInvoices((current) =>
       current.map((item) =>
         item.id === invoiceId ? { ...item, reminded: true } : item,
       ),
     );
-    const client = clients.find((item) => item.id === invoice.clientId);
     addActivity(
       invoice.projectId,
-      `Payment reminder sent to ${client?.name ?? "the client"} for ${invoice.number}`,
+      `Payment reminder emailed to ${client?.name ?? email} for ${invoice.number}`,
     );
     notify(
       clientUserIds(invoice.clientId),
       `Reminder: invoice ${invoice.number} is due ${invoice.dueLabel}.`,
       invoice.projectId,
     );
-    return { ok: true };
+    return { ok: true, message: `A payment reminder was emailed to ${email}.` };
   };
 
   const addMilestone = (projectId, { name, targetLabel }) => {
@@ -1404,6 +1487,8 @@ export function AppStateProvider({ children }) {
     updateProject,
     moveTask,
     addTask,
+    assignTask,
+    nudgeClient,
     addComment,
     markProjectCommentsRead,
     addFile,

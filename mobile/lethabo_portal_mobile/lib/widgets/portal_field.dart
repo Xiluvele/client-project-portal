@@ -1,5 +1,42 @@
 import 'package:flutter/material.dart';
 
+class PasswordField extends StatefulWidget {
+  final String label;
+  final TextEditingController controller;
+  final String hint;
+
+  const PasswordField({
+    super.key,
+    required this.label,
+    required this.controller,
+    required this.hint,
+  });
+
+  @override
+  State<PasswordField> createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<PasswordField> {
+  bool _hide = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return PortalField(
+      label: widget.label,
+      controller: widget.controller,
+      hint: widget.hint,
+      obscure: _hide,
+      suffix: IconButton(
+        onPressed: () => setState(() => _hide = !_hide),
+        icon: Icon(
+          _hide ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+          color: Colors.grey,
+        ),
+      ),
+    );
+  }
+}
+
 class PortalField extends StatelessWidget {
   final String label;
   final TextEditingController controller;

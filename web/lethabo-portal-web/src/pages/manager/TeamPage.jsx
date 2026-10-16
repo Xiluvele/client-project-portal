@@ -11,7 +11,7 @@ export function TeamPage() {
       <PageIntro
         title="Team"
         subtitle="Developers, designers, and content — the people assigned across client work."
-        actions={<Link className="btn btn--secondary" to="/team/dashboard">Back</Link>}
+        actions={<Link className="btn btn--secondary" to="/team/projects">Back</Link>}
       />
       <div className="team-grid">
         {members.map((member) => {
