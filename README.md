@@ -11,6 +11,7 @@ The solution currently consists of:
 - **ASP.NET Core Web API**
 - **Azure SQL database**
 - **Azure App Service**
+- **Render Static Site hosting**
 
 Both the web and mobile applications are intended to use the same ASP.NET Core API and Azure SQL database.
 
@@ -42,7 +43,8 @@ clientPortal/
 | Backend | ASP.NET Core Web API (.NET 10) |
 | Database | Azure SQL |
 | ORM | Entity Framework Core |
-| Cloud Hosting | Microsoft Azure App Service |
+| Web Hosting | Render Static Site |
+| API Hosting | Microsoft Azure App Service |
 | Authentication | PBKDF2 password hashing |
 | Source Control | Git / GitHub |
 
@@ -73,6 +75,13 @@ The following functionality has been implemented:
 - User credentials verified against password hashes
 - Account active/locked checks implemented
 - Backend deployed to Azure App Service
+- React web application deployed to Render
+- React web application connected to the deployed Azure API
+- Render production environment configured with `VITE_API_URL`
+- React Router rewrite configured on Render for direct page routes
+- Azure API CORS configured to allow the production Render website
+- Account creation and activation API implemented
+- Email sign-in/verification code API implemented
 - Flutter mobile application created
 - Flutter splash screen created
 - Flutter login screen created
@@ -123,7 +132,6 @@ Next tasks include:
 - Add Project Manager permissions
 - Add Administrator permissions
 - Connect remaining mobile screens to the API
-- Connect the React web application to the API
 - Implement forgot-password functionality
 - Continue project details, tasks, milestones, comments and files
 - Add notifications
@@ -297,6 +305,9 @@ The following endpoints are currently available:
 | POST | `/api/projects` | Create a project |
 | GET | `/api/clients` | Retrieve clients |
 | POST | `/api/auth/login` | Authenticate a user |
+| POST | `/api/auth/email-code` | Send an email sign-in/verification code |
+| POST | `/api/accounts` | Create a new account and activation code |
+| POST | `/api/accounts/activate` | Activate an account and set its password |
 
 Example local health check:
 
@@ -350,6 +361,76 @@ JWT/token authentication and protected API endpoints are the next security devel
 
 ---
 
+# Render Web Deployment
+
+The React/Vite web application is now deployed online using **Render Static Site**.
+
+Production website:
+
+```text
+https://client-project-portal-a28c.onrender.com
+```
+
+The Render service builds the frontend from:
+
+```text
+web/lethabo-portal-web
+```
+
+The production frontend uses the following environment variable:
+
+```text
+VITE_API_URL=https://lethabo-portal-api-g6dzc3gphwbsameu.southafricanorth-01.azurewebsites.net
+```
+
+This makes sure that the deployed React website sends API requests to the Azure-hosted ASP.NET Core API instead of the local development API.
+
+Because the React application uses client-side routing, Render also has the following rewrite configured:
+
+```text
+Source:       /*
+Destination:  /index.html
+Action:       Rewrite
+```
+
+This allows pages such as `/login`, `/register`, `/activate` and dashboard routes to work when opened directly.
+
+When a `VITE_*` environment variable is added or changed on Render, the site must be rebuilt/redeployed because Vite includes these values during the build process.
+
+## Production CORS
+
+The ASP.NET Core API CORS policy allows requests from the local React application and the deployed Render website.
+
+Allowed frontend origins include:
+
+```text
+http://localhost:5173
+http://127.0.0.1:5173
+https://client-project-portal-a28c.onrender.com
+```
+
+The production Render origin must match exactly and must not contain an extra space.
+
+The current deployed architecture is:
+
+```text
+React Web Application (Render)
+            │
+            │ HTTPS
+            ▼
+ASP.NET Core Web API (Azure App Service)
+            │
+            ▼
+      Azure SQL Database
+            ▲
+            │ HTTPS
+Flutter Mobile Application
+```
+
+The web application and Flutter mobile application therefore use the same backend API and the same Azure SQL database.
+
+---
+
 # Azure Deployment
 
 The ASP.NET Core API is deployed to **Microsoft Azure App Service**.
@@ -379,6 +460,18 @@ PortalDb__Password
 ```
 
 The password itself must never be committed to the repository.
+
+The Azure App Service also stores the email configuration using environment variables:
+
+```text
+Email__User
+Email__AppPassword
+Email__Host
+Email__Port
+Email__FromName
+```
+
+The actual email password or app password must never be committed to GitHub.
 
 ---
 
@@ -563,7 +656,11 @@ As of the current development milestone:
 **Basic API Authentication:** Complete  
 **Flutter API Integration:** Complete  
 **Flutter Login:** Complete  
+**React API Integration:** Complete  
+**React Render Deployment:** Complete  
+**Account Creation & Activation:** Complete  
+**Email Code API Integration:** Complete  
 **JWT & Role-Based Authorization:** Next  
+**Role-Aware Flutter Dashboard:** In Progress  
 **Remaining Portal Features:** In Progress  
-**React API Integration:** Pending  
 **Security Hardening & Final Testing:** Pending
