@@ -735,3 +735,13 @@ Messages and invoice approval on the phone.
 Client dashboard.
 
 ![Phone client dashboard](screenshots/phone-client-dashboard.webp)
+
+Client invoices. A sent invoice can be approved or declined. An approved invoice stays on the list.
+
+![Phone client invoices](screenshots/phone-client-invoices.webp)
+
+![Phone invoices after approval](screenshots/phone-client-invoices-approved.webp)
+
+Project manager projects, with New Project, invoices, and team.
+
+![Phone project manager projects](screenshots/phone-manager-projects.webp)
