@@ -19,11 +19,13 @@ import {
 const SESSION_KEY = "lethabo-connect-session";
 const USERS_KEY = "lethabo-connect-users-v2";
 const CLIENTS_KEY = "lethabo-connect-clients-v2";
-const DROP_FLAG = "lethabo-connect-drop-readd-v3";
+const DROP_FLAG = "lethabo-connect-drop-readd-v4";
 const DROPPED_EMAILS = new Set([
   "xiluvelotalin@gmail.com",
   "thabedenokubonga5@gmail.com",
   "galarisima986@gmail.com",
+  "nompumelelononhlanhla18@gmail.com",
+  "mncwangonf@gmail.com",
 ]);
 
 let dropStoredAccounts = null;
@@ -49,24 +51,29 @@ function withoutDroppedAccounts(list, drop) {
 function readStored(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
+    if (!raw) return withoutDroppedAccounts(fallback, true);
     const saved = JSON.parse(raw);
-    if (!Array.isArray(saved)) return fallback;
+    if (!Array.isArray(saved)) return withoutDroppedAccounts(fallback, true);
     const byId = new Map(fallback.map((item) => [item.id, item]));
     saved.forEach((item) => {
       if (item?.id)
         byId.set(item.id, { ...(byId.get(item.id) ?? {}), ...item });
     });
-    return [...byId.values()];
+    return withoutDroppedAccounts([...byId.values()], true);
   } catch {
-    return fallback;
+    return withoutDroppedAccounts(fallback, true);
   }
 }
 
 function readSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const saved = raw ? JSON.parse(raw) : null;
+    if (DROPPED_EMAILS.has(String(saved?.email ?? "").toLowerCase())) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return saved;
   } catch {
     return null;
   }

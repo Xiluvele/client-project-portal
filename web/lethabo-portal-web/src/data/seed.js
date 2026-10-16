@@ -1,5 +1,3 @@
-import { BRIEF_PDF, designPreview } from '../lib/filePreview'
-
 const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60 * 1000).toISOString()
 const hoursAgo = (hours) => new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
 const daysAgo = (days) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
@@ -21,7 +19,6 @@ export const clients = [
   { id: 'northwind', name: 'Northwind Logistics', contact: 'Johan Venter', email: 'johan@northwind.co.za' },
   { id: 'sahara', name: 'Sahara Foods', contact: 'Amina Yusuf', email: 'amina@saharafoods.co.za' },
   { id: 'metrodental', name: 'Metro Dental', contact: 'Dr. Claire Adams', email: 'claire@metrodental.co.za' },
-  { id: 'nzimz', name: 'NzimzPty', contact: 'Nompumelelo Fortunate', email: 'nompumelelononhlanhla18@gmail.com' },
 ]
 
 export const users = [
@@ -30,7 +27,6 @@ export const users = [
   { id: 'user-sipho', name: 'Sipho Dlamini', email: 'sipho@lethabom.co.za', password: 'connect123', role: 'developer', memberId: 'sd', title: 'Software Developer', active: true },
   { id: 'user-thandi', name: 'Thandi Kunene', email: 'thandi@kunene.co.za', password: 'connect123', role: 'client', clientId: 'kunene', title: 'Kunene Attorneys', active: true },
   { id: 'user-lindiwe', name: 'Lindiwe Ndlovu', email: 'lindiwe@vukaretail.co.za', password: 'connect123', role: 'client', clientId: 'vuka', title: 'Vuka Retail', active: true },
-  { id: 'user-nzimz', name: 'Nompumelelo Fortunate', email: 'nompumelelononhlanhla18@gmail.com', password: 'connect123', role: 'client', clientId: 'nzimz', title: 'NzimzPty', active: true, activated: true },
 ]
 
 const kuneneTasks = [
@@ -185,69 +181,6 @@ export const projects = [
     files: [],
     comments: [],
   },
-  {
-    id: 'nzimz-mobile',
-    clientId: 'nzimz',
-    name: 'Nzimz Client App',
-    service: 'Mobile app',
-    description: 'A mobile app for Nzimz clients to follow orders and approve work.',
-    status: 'in_progress',
-    stage: 'development',
-    startedLabel: '16 Oct',
-    dueAt: '2026-12-04',
-    dueLabel: '04 Dec',
-    dueThisWeek: false,
-    progress: 55,
-    memberIds: ['an'],
-    milestones: [
-      { id: 'nzm1', name: 'Discovery', targetLabel: '24 Oct', status: 'complete' },
-      { id: 'nzm2', name: 'Design', targetLabel: '14 Nov', status: 'planned' },
-      { id: 'nzm3', name: 'Build', targetLabel: '04 Dec', status: 'planned' },
-    ],
-    tasks: [
-      { id: 'nzt1', title: 'Sign-in and account screens', type: 'dev', status: 'in_progress', assigneeId: 'an', dueLabel: '31 Oct' },
-      { id: 'nzt2', title: 'Order tracking screen', type: 'dev', status: 'in_review', assigneeId: 'an', dueLabel: 'Awaiting client' },
-      { id: 'nzt3', title: 'App icon and launch screen', type: 'design', status: 'done', assigneeId: 'an', dueLabel: '20 Oct' },
-    ],
-    files: [
-      { id: 'nzf1', name: 'Order_tracking_v1.fig', kind: 'Image', uploadedBy: 'Amahle', createdAt: hoursAgo(5), approval: 'pending', previewUrl: designPreview('Order tracking', 'Order number, status, and the next step.') },
-      { id: 'nzf2', name: 'App_brief.pdf', kind: 'PDF', uploadedBy: 'Naledi', createdAt: daysAgo(2), approval: 'approved', previewUrl: BRIEF_PDF },
-    ],
-    comments: [
-      { id: 'nzc1', authorName: 'Nompumelelo Fortunate', initials: 'NF', role: 'client', body: 'Please keep the order status easy to read on a phone.', createdAt: hoursAgo(2), read: true },
-      { id: 'nzc2', authorName: 'Amahle Nkosi', initials: 'AN', role: 'developer', body: 'The tracking screen is ready for you to approve.', createdAt: hoursAgo(1), read: false },
-    ],
-  },
-  {
-    id: 'nzimz-store',
-    clientId: 'nzimz',
-    name: 'Nzimz Online Store',
-    service: 'E-commerce',
-    description: 'An online store for Nzimz products, with checkout and order tracking.',
-    status: 'in_review',
-    stage: 'testing',
-    startedLabel: '16 Oct',
-    dueAt: '2026-11-20',
-    dueLabel: '20 Nov',
-    dueThisWeek: false,
-    progress: 82,
-    memberIds: ['an'],
-    milestones: [
-      { id: 'nzs1', name: 'Catalogue', targetLabel: '30 Oct', status: 'complete' },
-      { id: 'nzs2', name: 'Checkout', targetLabel: '13 Nov', status: 'planned' },
-      { id: 'nzs3', name: 'Launch', targetLabel: '20 Nov', status: 'planned' },
-    ],
-    tasks: [
-      { id: 'nzs-t1', title: 'Product catalogue pages', type: 'dev', status: 'done', assigneeId: 'an', dueLabel: '28 Oct' },
-      { id: 'nzs-t2', title: 'Checkout and payment', type: 'dev', status: 'in_review', assigneeId: 'an', dueLabel: 'Awaiting client' },
-    ],
-    files: [
-      { id: 'nzsf1', name: 'Checkout_v2.fig', kind: 'Image', uploadedBy: 'Amahle', createdAt: hoursAgo(8), approval: 'pending', previewUrl: designPreview('Checkout', 'Cart, delivery address, and payment.') },
-    ],
-    comments: [
-      { id: 'nzsc1', authorName: 'Amahle Nkosi', initials: 'AN', role: 'developer', body: 'Checkout is ready for a look before we connect payment.', createdAt: hoursAgo(3), read: false },
-    ],
-  },
 ]
 
 export const invoices = [
@@ -333,32 +266,6 @@ export const invoices = [
     dueLabel: '11 Aug',
     items: [{ id: 'li7', description: 'Design phase', amount: 19500 }],
   },
-  {
-    id: 'inv-nzimz-app',
-    number: 'INV310',
-    clientId: 'nzimz',
-    projectId: 'nzimz-mobile',
-    title: 'Mobile app design',
-    status: 'pending',
-    issuedLabel: '16 Oct',
-    dueLabel: '30 Oct',
-    issuedAt: '2026-10-16',
-    dueAt: '2026-10-30',
-    items: [{ id: 'li-nz1', description: 'Mobile app design', amount: 12000 }],
-  },
-  {
-    id: 'inv-nzimz-store',
-    number: 'INV311',
-    clientId: 'nzimz',
-    projectId: 'nzimz-store',
-    title: 'Store catalogue',
-    status: 'pending',
-    issuedLabel: '16 Oct',
-    dueLabel: '06 Nov',
-    issuedAt: '2026-10-16',
-    dueAt: '2026-11-06',
-    items: [{ id: 'li-nz2', description: 'E-commerce catalogue', amount: 18000 }],
-  },
 ]
 
 export const activities = [
@@ -382,8 +289,6 @@ export const changeRequests = [
 export const requirements = [
   { id: 'rq1', projectId: 'kunene-web', text: 'Practice areas page with an attorney profile for each partner.', status: 'confirmed' },
   { id: 'rq2', projectId: 'kunene-web', text: 'Contact form delivered to reception@kunene.co.za.', status: 'recorded' },
-  { id: 'rq-nz1', projectId: 'nzimz-mobile', text: 'Clients can see order status without calling the office.', status: 'recorded' },
-  { id: 'rq-nz2', projectId: 'nzimz-store', text: 'Checkout accepts card payment and shows a confirmation.', status: 'confirmed' },
 ]
 
 export const notifications = [
