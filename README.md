@@ -118,6 +118,8 @@ JWT with the user id and role
 Role menu
 ```
 
+Sign-in uses two-step authentication. After the password is accepted, the user must enter the 6-digit code sent to their email before the role menu opens. The code is required on every login.
+
 If the password is forgotten, the sign-in page links to **Forgot password**. The API emails a 6-digit reset code, and `POST /api/auth/reset-password` stores the new password.
 
 ## Roles
@@ -199,8 +201,6 @@ Ctrl + C
 ---
 
 # Accounts
-
-There is no shared demo password. The old sample accounts (`admin@lethabom.co.za`, `naledi@lethabom.co.za`, `sipho@lethabom.co.za`, `thandi@kunene.co.za`, and `lindiwe@vukaretail.co.za`) are no longer used.
 
 An administrator creates each person on **Team & Access**:
 
@@ -347,7 +347,7 @@ A successful login returns a JWT and the signed-in user:
 - Team member ID
 - Title
 
-The website and the phone keep that token for the session and send it as `Authorization: Bearer <token>`. Logging out clears the session. The website also asks for the 6-digit email code before the role menu opens.
+The website and the phone keep that token for the session and send it as `Authorization: Bearer <token>`. Logging out clears the session. For login security, the user must also enter the 6-digit code sent to their email. The role menu does not open until that code is provided.
 
 ---
 
@@ -630,6 +630,7 @@ Always review `git status` before committing to make sure passwords, secrets, ge
 
 # Security Notes
 
+- Two-step sign-in is required. After the password, the user must enter the 6-digit code sent to their email on every login.
 - Never commit the Azure SQL password.
 - Never store user passwords as plain text.
 - Project changes, invoices, accounts, and the audit trail require a valid Bearer token and the matching role.
