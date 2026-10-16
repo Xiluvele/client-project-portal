@@ -495,7 +495,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
                   '$progress%',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -531,7 +531,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
                 Text(
                   'Due ${project['dueLabel'] ?? ''}',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
               ],
             ),
