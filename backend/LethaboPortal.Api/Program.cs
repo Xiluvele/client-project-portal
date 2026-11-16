@@ -25,7 +25,21 @@ builder.Services.AddSingleton<PortalMailer>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("portal", policy =>
-        policy.WithOrigins("http://localhost:5173","http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:62637","https://client-project-portal-a28c.onrender.com")
+        policy.SetIsOriginAllowed(origin =>
+            {
+                // The hosted website.
+                if (string.Equals(origin, "https://client-project-portal-a28c.onrender.com", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                // Local development on any port. Flutter web and Vite pick a new
+                // port each run, and a browser blocks the sign-in call ("Failed
+                // to fetch") when its origin is not listed here.
+                return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                    && uri.Scheme == Uri.UriSchemeHttp
+                    && (uri.Host == "localhost" || uri.Host == "127.0.0.1");
+            })
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
