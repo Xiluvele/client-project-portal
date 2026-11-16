@@ -3,10 +3,27 @@ import { AppStateContext } from "./useAppState";
 import { cloneSeed } from "../data/seed";
 import { createId, formatRand } from "../lib/format";
 import { PORTAL_URL } from "../lib/api";
-import { activateRemote, createPendingAccount, directoryMembers, listAccounts, listClients, listMembers, setAccountStatus, updateAccount } from "../lib/accounts";
+import {
+  activateRemote,
+  createPendingAccount,
+  directoryMembers,
+  listAccounts,
+  listClients,
+  listMembers,
+  setAccountStatus,
+  updateAccount,
+} from "../lib/accounts";
 import { loginRemote } from "../lib/auth";
 import { emailPaymentReminder, emailSignInCode } from "../lib/mailCode";
-import { assignRemoteTask, createRemoteProject, createRemoteTask, listInvoices, listNotifications, listProjects, postProjectAction } from "../lib/projects";
+import {
+  assignRemoteTask,
+  createRemoteProject,
+  createRemoteTask,
+  listInvoices,
+  listNotifications,
+  listProjects,
+  postProjectAction,
+} from "../lib/projects";
 import { assessOtp, createOtpChallenge } from "../lib/otp";
 import { roleLabel } from "../lib/roles";
 import {
@@ -112,7 +129,8 @@ export function AppStateProvider({ children }) {
     forgetStoredPeople();
     if (!shouldDropStoredAccounts()) return;
     setSession((current) => {
-      if (!DROPPED_EMAILS.has(String(current?.email ?? "").toLowerCase())) return current;
+      if (!DROPPED_EMAILS.has(String(current?.email ?? "").toLowerCase()))
+        return current;
       try {
         localStorage.removeItem(SESSION_KEY);
       } catch {
@@ -145,8 +163,12 @@ export function AppStateProvider({ children }) {
     ]);
     if (result.ok) {
       setProjects(result.projects);
-      setChangeRequests(result.projects.flatMap((project) => project.changeRequests ?? []));
-      setRequirements(result.projects.flatMap((project) => project.requirements ?? []));
+      setChangeRequests(
+        result.projects.flatMap((project) => project.changeRequests ?? []),
+      );
+      setRequirements(
+        result.projects.flatMap((project) => project.requirements ?? []),
+      );
     }
     if (bills.ok) setInvoices(bills.invoices);
     if (notes.ok) setNotifications(notes.notifications);
@@ -301,6 +323,7 @@ export function AppStateProvider({ children }) {
     );
 
     const delivery = await emailSignInCode({
+      token: remote.token,
       email: ready.email,
       name: ready.name,
       code: challenge.code,
@@ -336,6 +359,7 @@ export function AppStateProvider({ children }) {
     setOtpChallenge(challenge);
     if (challenge.userId) rememberSignInCode(challenge.userId, challenge);
     const delivery = await emailSignInCode({
+      token: pendingToken,
       email: challenge.email,
       name:
         users.find((item) => item.id === challenge.userId)?.name ??
@@ -449,7 +473,14 @@ export function AppStateProvider({ children }) {
   const notify = (userIds, text, projectId) => {
     if (!user?.id || !userIds.includes(user.id)) return;
     setNotifications((current) => {
-      if (current.some((item) => item.userId === user.id && item.text === text && item.projectId === projectId)) {
+      if (
+        current.some(
+          (item) =>
+            item.userId === user.id &&
+            item.text === text &&
+            item.projectId === projectId,
+        )
+      ) {
         return current;
       }
       return [
@@ -614,7 +645,10 @@ export function AppStateProvider({ children }) {
     }
   };
 
-  const addTask = async (projectId, { title, description, dueLabel, assigneeId }) => {
+  const addTask = async (
+    projectId,
+    { title, description, dueLabel, assigneeId },
+  ) => {
     const project = projects.find((item) => item.id === projectId);
     const remote = await createRemoteTask(
       projectId,
@@ -666,7 +700,8 @@ export function AppStateProvider({ children }) {
         item.active !== false &&
         (item.memberId || item.id) === assigneeId,
     );
-    if (!task || !developer) return { ok: false, message: "Choose a developer." };
+    if (!task || !developer)
+      return { ok: false, message: "Choose a developer." };
     const remote = await assignRemoteTask(
       projectId,
       taskId,
@@ -703,7 +738,9 @@ export function AppStateProvider({ children }) {
     const text = body?.trim();
     if (!user || !text) return { ok: false };
     const project = projects.find((item) => item.id === projectId);
-    const parent = (project?.comments ?? []).find((item) => item.id === replyToId);
+    const parent = (project?.comments ?? []).find(
+      (item) => item.id === replyToId,
+    );
     const remote = await postProjectAction(
       `/api/projects/${projectId}/comments`,
       session?.token,
@@ -754,7 +791,10 @@ export function AppStateProvider({ children }) {
     });
   }, []);
 
-  const addFile = async (projectId, { name, kind, description, previewUrl }) => {
+  const addFile = async (
+    projectId,
+    { name, kind, description, previewUrl },
+  ) => {
     const project = projects.find((item) => item.id === projectId);
     const cleanName = name.trim();
     const remote = await postProjectAction(
@@ -788,7 +828,8 @@ export function AppStateProvider({ children }) {
 
   const decideFile = async (projectId, fileId, approval) => {
     const project = projects.find((item) => item.id === projectId);
-    const fileName = project?.files.find((file) => file.id === fileId)?.name ?? "a file";
+    const fileName =
+      project?.files.find((file) => file.id === fileId)?.name ?? "a file";
     const remote = await postProjectAction(
       `/api/projects/${projectId}/files/${fileId}/decision`,
       session?.token,
@@ -809,11 +850,13 @@ export function AppStateProvider({ children }) {
     );
   };
 
-  const approveFile = (projectId, fileId) => decideFile(projectId, fileId, "approved");
+  const approveFile = (projectId, fileId) =>
+    decideFile(projectId, fileId, "approved");
 
   const decideInvoice = async (invoiceId, status) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice) return { ok: false, message: "That invoice could not be found." };
+    if (!invoice)
+      return { ok: false, message: "That invoice could not be found." };
     const current = effectiveStatus(invoice);
     if (!["sent", "overdue", "pending"].includes(current)) {
       return { ok: false, message: "This invoice has already been decided." };
@@ -826,8 +869,15 @@ export function AppStateProvider({ children }) {
     if (!remote.ok) return remote;
     await refreshProjects(session?.token);
     const verb = status === "approved" ? "approved" : "declined";
-    addActivity(invoice.projectId, `${user?.name ?? "Client"} ${verb} ${invoice.number}`);
-    notify(managerIds(), `${user?.name ?? "A client"} ${verb} ${invoice.number}.`, invoice.projectId);
+    addActivity(
+      invoice.projectId,
+      `${user?.name ?? "Client"} ${verb} ${invoice.number}`,
+    );
+    notify(
+      managerIds(),
+      `${user?.name ?? "A client"} ${verb} ${invoice.number}.`,
+      invoice.projectId,
+    );
     return { ok: true };
   };
 
@@ -961,7 +1011,10 @@ export function AppStateProvider({ children }) {
 
   const markInvoicePaid = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice || !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))) {
+    if (
+      !invoice ||
+      !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))
+    ) {
       return {
         ok: false,
         message: "Only sent invoices can be marked as paid.",
@@ -988,7 +1041,10 @@ export function AppStateProvider({ children }) {
 
   const cancelInvoice = async (invoiceId) => {
     const invoice = invoices.find((item) => item.id === invoiceId);
-    if (!invoice || !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))) {
+    if (
+      !invoice ||
+      !["sent", "overdue", "approved"].includes(effectiveStatus(invoice))
+    ) {
       return { ok: false, message: "Only sent invoices can be cancelled." };
     }
     const remote = await postProjectAction(
@@ -1021,10 +1077,16 @@ export function AppStateProvider({ children }) {
     );
     const email = client?.email || clientUser?.email;
     if (!email) {
-      return { ok: false, message: "This client has no email address for a payment reminder." };
+      return {
+        ok: false,
+        message: "This client has no email address for a payment reminder.",
+      };
     }
     if (!session?.token) {
-      return { ok: false, message: "Sign in again before sending a payment reminder." };
+      return {
+        ok: false,
+        message: "Sign in again before sending a payment reminder.",
+      };
     }
 
     const project = projects.find((item) => item.id === invoice.projectId);
@@ -1041,7 +1103,8 @@ export function AppStateProvider({ children }) {
     if (!delivery.sent) {
       return {
         ok: false,
-        message: delivery.message || "The payment reminder could not be emailed.",
+        message:
+          delivery.message || "The payment reminder could not be emailed.",
       };
     }
 
@@ -1122,7 +1185,9 @@ export function AppStateProvider({ children }) {
 
   const completeMilestone = async (projectId, milestoneId) => {
     const project = projects.find((item) => item.id === projectId);
-    const label = project?.milestones?.find((item) => item.id === milestoneId)?.name ?? "Milestone";
+    const label =
+      project?.milestones?.find((item) => item.id === milestoneId)?.name ??
+      "Milestone";
     const remote = await postProjectAction(
       `/api/projects/${projectId}/milestones/${milestoneId}/complete`,
       session?.token,
@@ -1176,7 +1241,12 @@ export function AppStateProvider({ children }) {
       );
   };
 
-  const submitChangeRequest = async (projectId, taskId, description, attachment = null) => {
+  const submitChangeRequest = async (
+    projectId,
+    taskId,
+    description,
+    attachment = null,
+  ) => {
     if (!description?.trim())
       return { ok: false, message: "Describe the change before submitting." };
     const project = projects.find((item) => item.id === projectId);
@@ -1262,7 +1332,11 @@ export function AppStateProvider({ children }) {
       if (!before)
         return { ok: false, message: "That user could not be found." };
       if (before.hasAccount === false)
-        return { ok: false, message: "This client does not have a sign-in yet. Add them as a user first." };
+        return {
+          ok: false,
+          message:
+            "This client does not have a sign-in yet. Add them as a user first.",
+        };
       if (role === "client" && !company?.trim())
         return { ok: false, message: "A client account needs a company name." };
 
@@ -1545,7 +1619,11 @@ export function AppStateProvider({ children }) {
       ),
     );
     if (session?.token) {
-      await postProjectAction(`/api/notifications/${notificationId}/read`, session.token, {});
+      await postProjectAction(
+        `/api/notifications/${notificationId}/read`,
+        session.token,
+        {},
+      );
     }
   };
 
