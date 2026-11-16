@@ -1418,9 +1418,16 @@ app.MapPost("/api/auth/reset-password", async (
     var email = request.Email?.Trim().ToLowerInvariant() ?? "";
     var code = request.Code?.Trim() ?? "";
     var password = request.Password ?? "";
-    if (!email.Contains('@') || code.Length != 6 || password.Length < 8)
+    if (!email.Contains('@') || code.Length != 6)
     {
-        return Results.BadRequest(new { ok = false, message = "Enter the email, the 6-digit code, and a password of at least 8 characters." });
+        return Results.BadRequest(new { ok = false, message = "Enter the email and the 6-digit code." });
+    }
+
+    // Enforced here so the rules cannot be skipped by calling the API directly.
+    var passwordErrors = PasswordPolicy.Validate(password, email);
+    if (passwordErrors.Count > 0)
+    {
+        return Results.BadRequest(new { ok = false, message = PasswordPolicy.Describe(passwordErrors), errors = passwordErrors });
     }
 
     var user = await db.Users.FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);
@@ -1834,9 +1841,16 @@ app.MapPost("/api/accounts/activate", async (
     var email = request.Email?.Trim().ToLowerInvariant() ?? "";
     var code = request.Code?.Trim() ?? "";
     var password = request.Password ?? "";
-    if (!email.Contains('@') || code.Length != 6 || password.Length < 8)
+    if (!email.Contains('@') || code.Length != 6)
     {
-        return Results.BadRequest(new { ok = false, message = "Enter the email, the 6-digit code, and a password of at least 8 characters." });
+        return Results.BadRequest(new { ok = false, message = "Enter the email and the 6-digit code." });
+    }
+
+    // Enforced here so the rules cannot be skipped by calling the API directly.
+    var passwordErrors = PasswordPolicy.Validate(password, email);
+    if (passwordErrors.Count > 0)
+    {
+        return Results.BadRequest(new { ok = false, message = PasswordPolicy.Describe(passwordErrors), errors = passwordErrors });
     }
 
     var user = await db.Users.FirstOrDefaultAsync(item => item.Email.ToLower() == email, cancellationToken);

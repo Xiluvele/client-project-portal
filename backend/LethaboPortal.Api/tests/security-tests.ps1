@@ -191,6 +191,22 @@ if ($RunLockoutTest) {
     }
 }
 
+# ---------- G. Password rules (no account is changed) ----------
+# Password rules are checked before the code is, so a made-up email and code is enough.
+Write-Host "`n--- G. Password rules enforced by the API ---" -ForegroundColor Cyan
+$weak = @("short1!", "123456", "password", "qwerty", "admin123", "Password1234!!", "P@ssw0rd2024!!", "qwertyuiop12", "aaaaaaaaaaaa", "123456789012")
+foreach ($endpoint in @("/api/auth/reset-password", "/api/accounts/activate")) {
+    foreach ($pw in $weak) {
+        $r = Api POST $endpoint $null @{ email = "nobody@example.com"; code = "000000"; password = $pw }
+        $msg = if ($r.Json) { "$($r.Json.message)" } else { "" }
+        Check "Weak password '$pw' rejected by $endpoint" ($r.Status -eq 400 -and $msg -like "Password not accepted*") "HTTP $($r.Status) $msg"
+    }
+    # A strong password passes the rules, so the request only fails later on the unknown account or code.
+    $r = Api POST $endpoint $null @{ email = "nobody@example.com"; code = "000000"; password = "Mango-River-Lantern-47" }
+    $msg = if ($r.Json) { "$($r.Json.message)" } else { "" }
+    Check "Strong password passes the rules at $endpoint" ($msg -notlike "Password not accepted*") "HTTP $($r.Status) $msg"
+}
+
 # ---------- Summary ----------
 $pass = @($results | Where-Object { $_.Result -eq "PASS" }).Count
 $fail = @($results | Where-Object { $_.Result -eq "FAIL" }).Count

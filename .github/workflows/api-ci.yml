@@ -31,6 +31,9 @@ jobs:
       - name: Build API
         run: dotnet build backend/LethaboPortal.Api/LethaboPortal.Api.csproj --configuration Release --no-restore
 
+      - name: Run unit tests
+        run: dotnet test backend/LethaboPortal.Api.Tests/LethaboPortal.Api.Tests.csproj --configuration Release
+
       - name: Publish API
         run: dotnet publish backend/LethaboPortal.Api/LethaboPortal.Api.csproj --configuration Release --no-restore --output ./publish
 
