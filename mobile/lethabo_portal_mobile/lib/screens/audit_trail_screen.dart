@@ -6,7 +6,11 @@ class AuditTrailScreen extends StatefulWidget {
   final String token;
   final bool embedded;
 
-  const AuditTrailScreen({super.key, required this.token, this.embedded = false});
+  const AuditTrailScreen({
+    super.key,
+    required this.token,
+    this.embedded = false,
+  });
 
   @override
   State<AuditTrailScreen> createState() => _AuditTrailScreenState();
@@ -53,9 +57,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
     setState(() {
       _loading = false;
-      _events = result.list
-          .whereType<Map<String, dynamic>>()
-          .toList();
+      _events = result.list.whereType<Map<String, dynamic>>().toList();
     });
   }
 
@@ -83,109 +85,134 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
   String _when(Object? value) {
     final parsed = DateTime.tryParse(value?.toString() ?? '');
     if (parsed == null) return '';
+
     final local = parsed.toLocal();
+
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final year = local.year;
+
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
+
+    return '$day/$month/$year\n$hour:$minute';
   }
 
   @override
   Widget build(BuildContext context) {
     final content = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.embedded)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(22, 16, 22, 4),
-              child: Text('Audit trail', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-            ),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.embedded)
           const Padding(
-            padding: EdgeInsets.fromLTRB(22, 8, 22, 12),
+            padding: EdgeInsets.fromLTRB(22, 16, 22, 4),
             child: Text(
-              'Who signed in, who was blocked, and which accounts changed.',
-              style: TextStyle(color: Colors.grey),
+              'Audit trail',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
-          SizedBox(
-            height: 46,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              children: _filters.map((filter) {
-                final selected = _category == filter.$1;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(filter.$2),
-                    selected: selected,
-                    selectedColor: yellow,
-                    backgroundColor: const Color(0xFF1A1A1A),
-                    labelStyle: TextStyle(
-                      color: selected ? black : Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    onSelected: (_) {
-                      setState(() => _category = filter.$1);
-                      _load();
-                    },
+        const Padding(
+          padding: EdgeInsets.fromLTRB(22, 8, 22, 12),
+          child: Text(
+            'Who signed in, who was blocked, and which accounts changed.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        ),
+        SizedBox(
+          height: 46,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: _filters.map((filter) {
+              final selected = _category == filter.$1;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(filter.$2),
+                  selected: selected,
+                  selectedColor: yellow,
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  labelStyle: TextStyle(
+                    color: selected ? black : Colors.white,
+                    fontWeight: FontWeight.w600,
                   ),
-                );
-              }).toList(),
-            ),
+                  onSelected: (_) {
+                    setState(() => _category = filter.$1);
+                    _load();
+                  },
+                ),
+              );
+            }).toList(),
           ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator(color: yellow))
-                : _error.isNotEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(_error, style: const TextStyle(color: Colors.white)),
-                        ),
-                      )
-                    : _events.isEmpty
-                        ? const Center(
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: yellow))
+              : _error.isNotEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      _error,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                )
+              : _events.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No events in this view yet.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _events.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final event = _events[index];
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
                             child: Text(
-                              'No events in this view yet.',
-                              style: TextStyle(color: Colors.grey),
+                              _sentence(event),
+                              style: const TextStyle(color: Colors.white),
                             ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _events.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
-                            itemBuilder: (context, index) {
-                              final event = _events[index];
-                              return Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1A1A1A),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        _sentence(event),
-                                        style: const TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      _when(event['at']),
-                                      style: const TextStyle(color: Colors.grey, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
                           ),
-          ),
-        ],
-      );
+                          const SizedBox(width: 12),
+                          Text(
+                            _when(event['at']),
+                            textAlign: TextAlign.right,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              height: 1.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
     if (widget.embedded) {
-      return ColoredBox(color: black, child: SafeArea(child: content));
+      return ColoredBox(
+        color: black,
+        child: SafeArea(child: content),
+      );
     }
     return Scaffold(
       backgroundColor: black,
