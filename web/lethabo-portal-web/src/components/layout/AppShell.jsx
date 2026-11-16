@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { formatRelative } from '../../lib/format'
 import { useAppState } from '../../state/useAppState'
+import { IdleTimeout } from '../auth/IdleTimeout'
 import { Avatar } from '../ui/Avatar'
 import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
@@ -94,6 +95,7 @@ export function AppShell({ audience }) {
 
   return (
     <div className="shell">
+      <IdleTimeout />
       {open ? <button className="scrim" aria-label="Close menu" onClick={() => setOpen(false)} /> : null}
       <aside className={open ? 'sidebar is-open' : 'sidebar'}>
         <Logo audience={audience} />

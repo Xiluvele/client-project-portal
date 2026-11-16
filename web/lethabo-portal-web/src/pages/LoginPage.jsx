@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EmailOtpStep } from "../components/auth/EmailOtpStep";
 import { Button } from "../components/ui/Button";
 import { PasswordField, TextField } from "../components/ui/Fields";
+import { readIdleNotice } from "../lib/idleTimeout";
 import { homeFor } from "../lib/roles";
 import { useAppState } from "../state/useAppState";
 
@@ -10,7 +11,9 @@ export function LoginPage() {
   const { login, verifyOtp, resendOtp, cancelOtp } = useAppState();
   const navigate = useNavigate();
   const location = useLocation();
-  const notice = location.state?.notice ?? "";
+  // Read once: shows why the person was signed out after inactivity.
+  const [idleNotice] = useState(readIdleNotice);
+  const notice = location.state?.notice ?? idleNotice;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

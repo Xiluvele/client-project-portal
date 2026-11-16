@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node --test src/lib/passwordPolicy.test.js",
+    "test": "node --test src/lib/passwordPolicy.test.js src/lib/idleTimeout.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

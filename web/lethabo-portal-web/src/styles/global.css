@@ -649,6 +649,7 @@ table.data tr:first-child td { border-top: 0; }
 .modal { width: min(520px, 100%); max-height: min(86vh, 720px); overflow: auto; }
 .modal header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
 .modal h2 { margin: 0; font-size: 20px; }
+.idle-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .check-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .check-grid label {
   display: flex; gap: 6px; align-items: center; background: #f6f7f9; border-radius: 999px; padding: 6px 10px; font-size: 13px;
