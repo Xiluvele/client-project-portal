@@ -10,6 +10,15 @@ class PortalApi {
   static const String portalUrl =
       'https://client-project-portal-a28c.onrender.com';
 
+  /// The login token of the signed-in person. It is set when the login
+  /// response is read (PortalUser.fromLogin) and sent on every API call that
+  /// does not pass its own token, so protected routes such as
+  /// /api/auth/email-code always receive it.
+  static String? sessionToken;
+
+  /// Call this when the person logs out.
+  static void signOut() => sessionToken = null;
+
   static String sixDigitCode() {
     final value = Random.secure().nextInt(900000) + 100000;
     return value.toString();
@@ -43,8 +52,9 @@ class PortalApi {
   }) async {
     try {
       final headers = <String, String>{'Content-Type': 'application/json'};
-      if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $token';
+      final bearer = (token != null && token.isNotEmpty) ? token : sessionToken;
+      if (bearer != null && bearer.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $bearer';
       }
 
       final uri = Uri.parse('$baseUrl$path');
@@ -58,6 +68,17 @@ class PortalApi {
       Object? data;
       if (response.body.isNotEmpty) {
         data = jsonDecode(response.body);
+      }
+
+      // Keep the login token as soon as the login response arrives, so the very
+      // next call (the sign-in code email) is already signed in.
+      if (path == '/api/auth/login' &&
+          response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          data is Map<String, dynamic>) {
+        final fresh =
+            data['token']?.toString() ?? data['Token']?.toString() ?? '';
+        if (fresh.isNotEmpty) sessionToken = fresh;
       }
 
       return ApiResult(statusCode: response.statusCode, data: data);
@@ -118,6 +139,10 @@ class PortalUser {
   factory PortalUser.fromLogin(Map<String, dynamic> body) {
     final user = body['user'];
     final record = user is Map<String, dynamic> ? user : <String, dynamic>{};
+    final token = body['token']?.toString() ?? body['Token']?.toString() ?? '';
+    if (token.isNotEmpty) {
+      PortalApi.sessionToken = token;
+    }
     return PortalUser(
       id: _text(record, 'id'),
       name: _text(record, 'name'),
@@ -126,7 +151,7 @@ class PortalUser {
       clientId: _text(record, 'clientId'),
       memberId: _text(record, 'memberId'),
       title: _text(record, 'title'),
-      token: body['token']?.toString() ?? body['Token']?.toString() ?? '',
+      token: token,
     );
   }
 

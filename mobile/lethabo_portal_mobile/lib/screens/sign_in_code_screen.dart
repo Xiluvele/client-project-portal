@@ -75,7 +75,7 @@ class _SignInCodeScreenState extends State<SignInCodeScreen> {
       'name': widget.user.name,
       'code': code,
       'purpose': 'login',
-    });
+    }, token: widget.user.token);
     if (!mounted) return;
     setState(() {
       _loading = false;
@@ -85,7 +85,7 @@ class _SignInCodeScreenState extends State<SignInCodeScreen> {
     _message(
       _emailed
           ? 'A new code was sent to ${widget.user.email}.'
-          : 'The email could not be sent. Use this code: $code',
+          : 'The email could not be sent. Check your connection and tap Resend code.',
     );
   }
 
@@ -111,7 +111,7 @@ class _SignInCodeScreenState extends State<SignInCodeScreen> {
             Text(
               _emailed
                   ? 'Enter the 6-digit code sent to ${widget.user.email}. It expires in 10 minutes.'
-                  : 'The email could not be sent. Your code is $_expected.',
+                  : 'The email could not be sent. Tap Resend code to try again.',
               style: TextStyle(color: Colors.grey.shade400, fontSize: 15),
             ),
             const SizedBox(height: 28),
