@@ -1,65 +1,92 @@
-import { useEffect, useMemo, useState } from 'react'
-import { PageIntro } from '../../components/layout/AppShell'
-import { Card } from '../../components/ui/Card'
-import { API_BASE } from '../../lib/api'
-import { useAppState } from '../../state/useAppState'
-import { CATEGORIES, SAMPLE_AUDIT, describeEvent, dayLabel, timeLabel } from '../../lib/auditLog'
+import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../../components/layout/AppShell";
+import { Card } from "../../components/ui/Card";
+import { API_BASE } from "../../lib/api";
+import { useAppState } from "../../state/useAppState";
+import {
+  CATEGORIES,
+  SAMPLE_AUDIT,
+  describeEvent,
+  dayLabel,
+  timeLabel,
+} from "../../lib/auditLog";
 
-const initials = (name = '?') => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
+const initials = (name = "?") =>
+  name
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
 export function AuditTrailPage() {
   // Uses auditLog from app state when it exists, otherwise the sample events.
-  const state = useAppState()
-  const live = state.auditLog ?? []
-  const [remote, setRemote] = useState(null)
-  const [category, setCategory] = useState('signins')
+  const state = useAppState();
+  const live = state.auditLog ?? [];
+  const [remote, setRemote] = useState(null);
+  const [category, setCategory] = useState("signins");
 
   useEffect(() => {
-    const token = state.session?.token
-    if (!token) return undefined
-    let cancelled = false
+    const token = state.session?.token;
+    if (!token) return undefined;
+    let cancelled = false;
     fetch(`${API_BASE}/api/audit`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((rows) => {
-        if (!cancelled && Array.isArray(rows)) setRemote(rows)
+        if (!cancelled && Array.isArray(rows)) setRemote(rows);
       })
-      .catch(() => {})
+      .catch(() => {});
     return () => {
-      cancelled = true
-    }
-  }, [state.session?.token])
+      cancelled = true;
+    };
+  }, [state.session?.token]);
 
-  const events = remote
-    ?? (live.length
-      ? [...live, ...SAMPLE_AUDIT.filter((sample) => !live.some((item) => item.id === sample.id))]
-      : SAMPLE_AUDIT)
+  const events =
+    remote ??
+    (live.length
+      ? [
+          ...live,
+          ...SAMPLE_AUDIT.filter(
+            (sample) => !live.some((item) => item.id === sample.id),
+          ),
+        ]
+      : SAMPLE_AUDIT);
 
   const counts = useMemo(() => {
-    const map = { all: events.length }
-    events.forEach((e) => { map[e.category] = (map[e.category] || 0) + 1 })
-    return map
-  }, [events])
+    const map = { all: events.length };
+    events.forEach((e) => {
+      map[e.category] = (map[e.category] || 0) + 1;
+    });
+    return map;
+  }, [events]);
 
   const days = useMemo(() => {
     const sorted = events
-      .filter((e) => category === 'all' || e.category === category)
-      .sort((a, b) => new Date(b.at) - new Date(a.at))
-    const map = new Map()
+      .filter((e) => category === "all" || e.category === category)
+      .sort((a, b) => new Date(b.at) - new Date(a.at));
+    const map = new Map();
     sorted.forEach((e) => {
-      const key = dayLabel(e.at)
-      if (!map.has(key)) map.set(key, [])
-      map.get(key).push(e)
-    })
-    return [...map.entries()]
-  }, [events, category])
+      const key = dayLabel(e.at);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(e);
+    });
+    return [...map.entries()];
+  }, [events, category]);
 
   return (
     <>
-      <PageIntro title="Audit trail" subtitle="User access first: who signed in, who was blocked, and what changed afterwards." />
+      <PageIntro
+        title="Audit trail"
+        subtitle="User access first: who signed in, who was blocked, and what changed afterwards."
+      />
 
-      <div className="audit-filters" role="group" aria-label="Filter the audit trail">
+      <div
+        className="audit-filters"
+        role="group"
+        aria-label="Filter the audit trail"
+      >
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
@@ -76,17 +103,21 @@ export function AuditTrailPage() {
 
       <Card>
         <div className="audit-feed">
-          {days.length === 0 ? <p className="empty">No activity to show yet.</p> : null}
+          {days.length === 0 ? (
+            <p className="empty">No activity to show yet.</p>
+          ) : null}
           {days.map(([day, list]) => (
             <section key={day} className="audit-day">
               <h2 className="audit-day__title">{day}</h2>
               <ol className="audit-list">
                 {list.map((e) => {
-                  const text = describeEvent(e)
-                  const startsWithActor = e.actor && text.startsWith(e.actor)
+                  const text = describeEvent(e);
+                  const startsWithActor = e.actor && text.startsWith(e.actor);
                   return (
                     <li key={e.id} className="audit-item">
-                      <span className="audit-avatar" aria-hidden="true">{initials(e.actor)}</span>
+                      <span className="audit-avatar" aria-hidden="true">
+                        {initials(e.actor)}
+                      </span>
                       <div className="audit-item__body">
                         <p className="audit-item__text">
                           {startsWithActor ? (
@@ -94,17 +125,31 @@ export function AuditTrailPage() {
                               <strong>{e.actor}</strong>
                               {text.slice(e.actor.length)}
                             </>
-                          ) : text}
+                          ) : (
+                            text
+                          )}
                         </p>
                         {Array.isArray(e.detail) ? (
                           <p className="audit-item__detail">
-                            {e.detail.map(([k, from, to]) => `${k}: ${from ? `${from} → ` : ''}${to}`).join('  |  ')}
+                            {e.detail
+                              .map(
+                                ([k, from, to]) =>
+                                  `${k}: ${from ? `${from} → ` : ""}${to}`,
+                              )
+                              .join("  |  ")}
                           </p>
                         ) : null}
                       </div>
-                      <time className="audit-item__time" dateTime={e.at}>{timeLabel(e.at)}</time>
+                      <time className="audit-item__time" dateTime={e.at}>
+                        {new Date(e.at).toLocaleDateString("en-ZA", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}{" "}
+                        {timeLabel(e.at)}
+                      </time>
                     </li>
-                  )
+                  );
                 })}
               </ol>
             </section>
@@ -112,5 +157,5 @@ export function AuditTrailPage() {
         </div>
       </Card>
     </>
-  )
+  );
 }
