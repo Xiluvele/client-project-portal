@@ -8,6 +8,7 @@ using LethaboPortal.Api.Domain;
 using LethaboPortal.Api.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,7 +25,7 @@ builder.Services.AddSingleton<PortalMailer>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("portal", policy =>
-        policy.WithOrigins("http://localhost:5173","http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:62637/","https://client-project-portal-a28c.onrender.com")
+        policy.WithOrigins("http://localhost:5173","http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:62637","https://client-project-portal-a28c.onrender.com")
             .AllowAnyHeader()
             .AllowAnyMethod());
 });
@@ -68,7 +69,12 @@ builder.Services
         };
     });
 
-builder.Services.AddAuthorization();
+// Every endpoint requires a signed-in user unless it is explicitly marked
+// .AllowAnonymous(). A route that is forgotten can no longer leak data.
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
 
 
 // Register PortalDbContext with dependency injection.
@@ -114,7 +120,7 @@ if (!PortalConnectionString.HasPassword(connectionString))
 // OpenAPI is currently only exposed during local development.
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.MapOpenApi().AllowAnonymous();
 }
 
 
@@ -179,7 +185,7 @@ app.MapGet("/api/health", async (
                 StatusCodes.Status503ServiceUnavailable
         );
     }
-});
+}).AllowAnonymous();
 
 
 // ============================================================
@@ -197,10 +203,12 @@ app.MapGet("/api/health", async (
 // mobile application can display which client owns a project.
 // ------------------------------------------------------------
 
-app.MapGet("/api/projects", async (PortalDbContext db) =>
+app.MapGet("/api/projects", async (ClaimsPrincipal principal, PortalDbContext db) =>
 {
-    var projects = await db.Projects
-        .AsNoTracking()
+    // Admins/managers see everything, clients only their own projects,
+    // developers only the projects they are assigned to.
+    var visible = await ScopeProjects(db, principal, db.Projects.AsNoTracking());
+    var projects = await visible
         .AsSplitQuery()
         .Include(p => p.Client)
         .Select(p => new
@@ -401,15 +409,33 @@ app.MapPost("/api/projects", async (
             project.Progress
         }
     );
-});
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
-app.MapGet("/api/projects/{id}", async (string id, PortalDbContext db) =>
-    await ProjectWorkspace(db, id));
-
-app.MapGet("/api/team-members", async (PortalDbContext db) =>
+app.MapGet("/api/projects/{id}", async (string id, ClaimsPrincipal principal, PortalDbContext db) =>
 {
-    var members = await db.TeamMembers
-        .AsNoTracking()
+    var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == id);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (!await CanAccessProject(db, principal, project)) return Results.Forbid();
+    return await ProjectWorkspace(db, id, principal);
+}).RequireAuthorization();
+
+app.MapGet("/api/team-members", async (ClaimsPrincipal principal, PortalDbContext db) =>
+{
+    // Clients only see staff working on their own projects, without emails.
+    var isClient = CurrentRole(principal) == "client";
+    var query = db.TeamMembers.AsNoTracking().AsQueryable();
+    if (isClient)
+    {
+        var owned = await OwnedClientIds(db, principal);
+        var memberIds = await db.ProjectMembers.AsNoTracking()
+            .Where(link => owned.Contains(link.Project!.ClientId))
+            .Select(link => link.MemberId)
+            .Distinct()
+            .ToListAsync();
+        query = query.Where(member => memberIds.Contains(member.Id));
+    }
+
+    var members = await query
         .OrderBy(member => member.Name)
         .Select(member => new
         {
@@ -418,13 +444,13 @@ app.MapGet("/api/team-members", async (PortalDbContext db) =>
             member.ShortName,
             member.Role,
             member.Initials,
-            member.Email,
+            Email = isClient ? "" : member.Email,
             member.Allocated
         })
         .ToListAsync();
 
     return Results.Ok(members);
-});
+}).RequireAuthorization();
 
 app.MapGet("/api/notifications", async (ClaimsPrincipal principal, PortalDbContext db) =>
 {
@@ -558,6 +584,7 @@ app.MapPost("/api/projects/{projectId}/comments", async (
 {
     var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == projectId);
     if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (!await CanAccessProject(db, principal, project)) return Results.Forbid();
     if (string.IsNullOrWhiteSpace(request.Body)) return Results.BadRequest(new { message = "Write a message first." });
 
     string? replyToId = null;
@@ -587,7 +614,7 @@ app.MapPost("/api/projects/{projectId}/comments", async (
     else
         await NotifyUsers(db, await ClientUserIds(db, project.ClientId), projectId, $"{name} left a message on {project.Name}.");
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return await ProjectWorkspace(db, projectId, principal);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "client", "developer"));
 
 app.MapPost("/api/projects/{projectId}/change-requests", async (
@@ -598,6 +625,7 @@ app.MapPost("/api/projects/{projectId}/change-requests", async (
 {
     var project = await db.Projects.Include(item => item.Tasks).FirstOrDefaultAsync(item => item.Id == projectId);
     if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (!await CanAccessProject(db, principal, project)) return Results.Forbid();
     if (string.IsNullOrWhiteSpace(request.Description))
         return Results.BadRequest(new { message = "Describe the change before submitting." });
     var task = project.Tasks.FirstOrDefault(item => item.Id == request.TaskId);
@@ -610,7 +638,7 @@ app.MapPost("/api/projects/{projectId}/change-requests", async (
     {
         Id = Guid.NewGuid().ToString(),
         ProjectId = projectId,
-        ClientId = principal.FindFirstValue("clientId") ?? project.ClientId,
+        ClientId = project.ClientId,
         TaskId = task.Id,
         Description = request.Description.Trim(),
         AttachmentName = string.IsNullOrWhiteSpace(request.AttachmentName) ? null : request.AttachmentName.Trim(),
@@ -622,7 +650,7 @@ app.MapPost("/api/projects/{projectId}/change-requests", async (
     var asker = principal.FindFirstValue(ClaimTypes.Name) ?? "A client";
     await NotifyUsers(db, await ManagerUserIds(db), projectId, $"{asker} requested a change on \"{task.Title}\" in {project.Name}.");
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return await ProjectWorkspace(db, projectId, principal);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
 
 app.MapPost("/api/projects/{projectId}/files", async (
@@ -631,8 +659,9 @@ app.MapPost("/api/projects/{projectId}/files", async (
     ClaimsPrincipal principal,
     PortalDbContext db) =>
 {
-    var exists = await db.Projects.AnyAsync(item => item.Id == projectId);
-    if (!exists) return Results.NotFound(new { message = "Project not found." });
+    var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(item => item.Id == projectId);
+    if (project == null) return Results.NotFound(new { message = "Project not found." });
+    if (!await CanAccessProject(db, principal, project)) return Results.Forbid();
     if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { message = "Enter a file name." });
 
     if ((request.PreviewUrl?.Length ?? 0) > 500_000)
@@ -651,10 +680,9 @@ app.MapPost("/api/projects/{projectId}/files", async (
         Approval = "pending",
         Version = 1
     });
-    var project = await db.Projects.AsNoTracking().FirstAsync(item => item.Id == projectId);
     await NotifyUsers(db, await ClientUserIds(db, project.ClientId), projectId, $"A new file was shared on {project.Name}.");
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return await ProjectWorkspace(db, projectId, principal);
 }).RequireAuthorization(policy => policy.RequireRole("manager", "administrator", "developer"));
 
 app.MapPost("/api/projects/{projectId}/files/{fileId}/decision", async (
@@ -675,7 +703,7 @@ app.MapPost("/api/projects/{projectId}/files/{fileId}/decision", async (
     var verb = request.Status == "approved" ? "approved" : "declined";
     await NotifyUsers(db, await ManagerUserIds(db), projectId, $"{actor} {verb} {file.Name}.");
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return await ProjectWorkspace(db, projectId, principal);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
 
 app.MapPost("/api/projects/{projectId}/tasks/{taskId}/status", async (
@@ -748,7 +776,7 @@ app.MapPost("/api/projects/{projectId}/requirements/{requirementId}", async (
         await NotifyUsers(db, await ManagerUserIds(db), projectId, $"A client disputed a requirement on {requirementProject.Name}: {requirement.Text}");
     }
     await db.SaveChangesAsync();
-    return await ProjectWorkspace(db, projectId);
+    return await ProjectWorkspace(db, projectId, principal);
 }).RequireAuthorization(policy => policy.RequireRole("client", "manager", "administrator"));
 
 app.MapPost("/api/projects/{projectId}/change-requests/{requestId}", async (
@@ -990,10 +1018,22 @@ app.MapDelete("/api/invoices/{id}", async (string id, PortalDbContext db) =>
 // client when creating a project.
 // ------------------------------------------------------------
 
-app.MapGet("/api/clients", async (PortalDbContext db) =>
+app.MapGet("/api/clients", async (ClaimsPrincipal principal, PortalDbContext db) =>
 {
-    var clients = await db.Clients
-        .AsNoTracking()
+    // Clients only see their own company; developers do not need client details.
+    var query = db.Clients.AsNoTracking().AsQueryable();
+    var role = CurrentRole(principal);
+    if (role == "client")
+    {
+        var owned = await OwnedClientIds(db, principal);
+        query = query.Where(c => owned.Contains(c.Id));
+    }
+    else if (role == "developer")
+    {
+        query = query.Where(c => false);
+    }
+
+    var clients = await query
         .Select(c => new
         {
             c.Id,
@@ -1004,7 +1044,7 @@ app.MapGet("/api/clients", async (PortalDbContext db) =>
         .ToListAsync();
 
     return Results.Ok(clients);
-});
+}).RequireAuthorization();
 
 
 // ============================================================
@@ -1054,8 +1094,8 @@ app.MapPost("/api/auth/login", async (
     //
     // AsNoTracking is used because login does not need to
     // modify the user at this stage.
+    // Tracked on purpose: failed attempts are counted on the user.
     var user = await db.Users
-        .AsNoTracking()
         .FirstOrDefaultAsync(
             u => u.Email.ToLower() == email.ToLower()
         );
@@ -1076,6 +1116,14 @@ app.MapPost("/api/auth/login", async (
             user.PasswordHash
         ))
     {
+        // Lock the account after 5 wrong passwords in a row.
+        if (user != null && user.Activated)
+        {
+            user.FailedAttempts += 1;
+            if (user.FailedAttempts >= 5) user.Locked = true;
+            await db.SaveChangesAsync();
+        }
+
         await RecordAudit(db, "Unknown", email, "signin_failed", "signins", email, null, CancellationToken.None);
         return Results.Json(
             new
@@ -1144,6 +1192,12 @@ app.MapPost("/api/auth/login", async (
     // Create a signed JWT for this authenticated user.
     // The user's role is included so protected endpoints can
     // enforce Administrator/Manager/Developer/Client permissions.
+    if (user.FailedAttempts != 0)
+    {
+        user.FailedAttempts = 0;
+        await db.SaveChangesAsync();
+    }
+
     var expiresAt = DateTime.UtcNow.AddHours(8);
 
     var token = CreateJwtToken(
@@ -1172,7 +1226,7 @@ app.MapPost("/api/auth/login", async (
             user.Title
         }
     });
-});
+}).AllowAnonymous();
 
 
 // ------------------------------------------------------------
@@ -1224,7 +1278,7 @@ app.MapPost("/api/auth/email-code", async (
             message = "Gmail rejected the message. Check the app password."
         });
     }
-});
+}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
 
 
 // ------------------------------------------------------------
@@ -1338,7 +1392,7 @@ app.MapPost("/api/auth/forgot-password", async (
     }
 
     return sent;
-});
+}).AllowAnonymous();
 
 
 // ------------------------------------------------------------
@@ -1394,7 +1448,7 @@ app.MapPost("/api/auth/reset-password", async (
     await RecordAudit(db, user.Name, user.Email, "password_reset", "accounts", user.Email, null, cancellationToken);
 
     return Results.Ok(new { ok = true, message = "Your password has been updated. Sign in with the new password." });
-});
+}).AllowAnonymous();
 
 
 // ------------------------------------------------------------
@@ -1826,7 +1880,7 @@ app.MapPost("/api/accounts/activate", async (
         ok = true,
         user = new { user.Id, user.Name, user.Email, user.Role, user.ClientId, user.MemberId, user.Title, user.Phone }
     });
-});
+}).AllowAnonymous();
 
 
 // ============================================================
@@ -2066,6 +2120,63 @@ static async Task<bool> OwnsClient(PortalDbContext db, ClaimsPrincipal principal
     return owned.Contains(recordClientId);
 }
 
+static string CurrentRole(ClaimsPrincipal principal) =>
+    principal.FindFirstValue(ClaimTypes.Role)?.ToLowerInvariant() ?? "";
+
+static async Task<List<string>> DeveloperProjectIds(PortalDbContext db, ClaimsPrincipal principal)
+{
+    var memberId = principal.FindFirstValue("memberId");
+    var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+    var viaMembers = await db.ProjectMembers.AsNoTracking()
+        .Where(item => item.MemberId == memberId || item.MemberId == userId)
+        .Select(item => item.ProjectId)
+        .ToListAsync();
+    var viaTasks = await db.WorkItems.AsNoTracking()
+        .Where(item => item.AssigneeId == memberId || item.AssigneeId == userId)
+        .Select(item => item.ProjectId)
+        .ToListAsync();
+    return viaMembers.Concat(viaTasks).Distinct().ToList();
+}
+
+// Limits a project query to what the signed-in user is allowed to see.
+static async Task<IQueryable<PortalProject>> ScopeProjects(
+    PortalDbContext db,
+    ClaimsPrincipal principal,
+    IQueryable<PortalProject> query)
+{
+    switch (CurrentRole(principal))
+    {
+        case "administrator":
+        case "manager":
+            return query;
+        case "client":
+            var owned = await OwnedClientIds(db, principal);
+            return query.Where(project => owned.Contains(project.ClientId));
+        case "developer":
+            var assigned = await DeveloperProjectIds(db, principal);
+            return query.Where(project => assigned.Contains(project.Id));
+        default:
+            return query.Where(project => false);
+    }
+}
+
+// Ownership check for a single project (used by reads and writes).
+static async Task<bool> CanAccessProject(PortalDbContext db, ClaimsPrincipal principal, PortalProject project)
+{
+    switch (CurrentRole(principal))
+    {
+        case "administrator":
+        case "manager":
+            return true;
+        case "client":
+            return (await OwnedClientIds(db, principal)).Contains(project.ClientId);
+        case "developer":
+            return (await DeveloperProjectIds(db, principal)).Contains(project.Id);
+        default:
+            return false;
+    }
+}
+
 static string PersonInitials(string name)
 {
     var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -2099,8 +2210,11 @@ static int WorkProgress(IEnumerable<WorkItem> tasks)
     return (int)Math.Round(total / list.Count * 100);
 }
 
-static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id)
+static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id, ClaimsPrincipal? principal = null)
 {
+    // Clients must not see draft invoices.
+    var hideDrafts = principal != null && CurrentRole(principal) == "client";
+
     var project = await db.Projects
         .AsNoTracking()
         .Include(item => item.Client)
@@ -2124,7 +2238,7 @@ static async Task<IResult> ProjectWorkspace(PortalDbContext db, string id)
     var invoices = await db.Invoices
         .AsNoTracking()
         .Include(item => item.Lines)
-        .Where(item => item.ProjectId == id)
+        .Where(item => item.ProjectId == id && (!hideDrafts || item.Status != "draft"))
         .ToListAsync();
 
     var changes = await db.ChangeRequests
