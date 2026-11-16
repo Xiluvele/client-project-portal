@@ -127,7 +127,7 @@ class _IdleTimeoutGuardState extends State<IdleTimeoutGuard>
               style: TextStyle(color: Colors.white)),
           content: ValueListenableBuilder<int>(
             valueListenable: _secondsLeft,
-            builder: (_, seconds, __) => Text(
+            builder: (_, seconds, _) => Text(
               'For your security you will be signed out in $seconds '
               '${seconds == 1 ? 'second' : 'seconds'} because there has been '
               'no activity.',
