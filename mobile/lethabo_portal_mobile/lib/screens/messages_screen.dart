@@ -28,7 +28,6 @@ class MessagesScreen extends StatefulWidget {
 
 class _MessagesScreenState extends State<MessagesScreen> {
   static const yellow = Color(0xFFFFEE0B);
-  static const black = Color(0xFF0D0D0D);
   static const cardColor = Color(0xFF1A1A1A);
 
   bool _loading = true;
@@ -46,10 +45,22 @@ class _MessagesScreenState extends State<MessagesScreen> {
       _loading = true;
       _error = null;
     });
-    final projectsResult = await PortalApi.get('/api/projects', token: widget.token);
-    final noticesResult = await PortalApi.get('/api/notifications', token: widget.token);
-    final clientsResult = await PortalApi.get('/api/clients', token: widget.token);
-    final membersResult = await PortalApi.get('/api/team-members', token: widget.token);
+    final projectsResult = await PortalApi.get(
+      '/api/projects',
+      token: widget.token,
+    );
+    final noticesResult = await PortalApi.get(
+      '/api/notifications',
+      token: widget.token,
+    );
+    final clientsResult = await PortalApi.get(
+      '/api/clients',
+      token: widget.token,
+    );
+    final membersResult = await PortalApi.get(
+      '/api/team-members',
+      token: widget.token,
+    );
     if (!mounted) return;
 
     if (!projectsResult.ok && !noticesResult.ok) {
@@ -77,44 +88,58 @@ class _MessagesScreenState extends State<MessagesScreen> {
       if (comments is! List) continue;
       for (final comment in comments) {
         if (comment is! Map) continue;
-        threads.add(_Thread(
-          projectId: '${project['id'] ?? ''}',
-          projectName: '${project['name'] ?? 'Project'}',
-          title: '${comment['authorName'] ?? 'Message'}',
-          body: '${comment['body'] ?? ''}',
-          createdAt: DateTime.tryParse('${comment['createdAt'] ?? ''}'),
-          summary: project,
-        ));
+        threads.add(
+          _Thread(
+            projectId: '${project['id'] ?? ''}',
+            projectName: '${project['name'] ?? 'Project'}',
+            title: '${comment['authorName'] ?? 'Message'}',
+            body: '${comment['body'] ?? ''}',
+            createdAt: DateTime.tryParse('${comment['createdAt'] ?? ''}'),
+            summary: project,
+          ),
+        );
       }
     }
     for (final notice in noticesResult.list.map(_map)) {
       final projectId = '${notice['projectId'] ?? ''}';
       final match = visible.cast<Map<String, dynamic>?>().firstWhere(
-            (item) => '${item?['id'] ?? ''}' == projectId,
-            orElse: () => null,
-          );
-      threads.add(_Thread(
-        projectId: projectId,
-        projectName: '${match?['name'] ?? 'Notification'}',
-        title: 'Notification',
-        body: '${notice['text'] ?? ''}',
-        createdAt: DateTime.tryParse('${notice['createdAt'] ?? ''}'),
-        summary: match ?? const {},
-        noticeId: '${notice['id'] ?? ''}',
-      ));
+        (item) => '${item?['id'] ?? ''}' == projectId,
+        orElse: () => null,
+      );
+      threads.add(
+        _Thread(
+          projectId: projectId,
+          projectName: '${match?['name'] ?? 'Notification'}',
+          title: 'Notification',
+          body: '${notice['text'] ?? ''}',
+          createdAt: DateTime.tryParse('${notice['createdAt'] ?? ''}'),
+          summary: match ?? const {},
+          noticeId: '${notice['id'] ?? ''}',
+        ),
+      );
     }
-    threads.sort((left, right) => (right.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(left.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)));
+    threads.sort(
+      (left, right) =>
+          (right.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+            left.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0),
+          ),
+    );
     setState(() {
       _loading = false;
       _threads = threads.where((item) => item.body.trim().isNotEmpty).toList();
     });
   }
 
-  Map<String, dynamic> _map(dynamic item) => item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
+  Map<String, dynamic> _map(dynamic item) =>
+      item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
 
   Future<void> _open(_Thread thread) async {
     if (thread.noticeId.isNotEmpty) {
-      await PortalApi.post('/api/notifications/${thread.noticeId}/read', {}, token: widget.token);
+      await PortalApi.post(
+        '/api/notifications/${thread.noticeId}/read',
+        {},
+        token: widget.token,
+      );
     }
     if (!mounted || thread.projectId.isEmpty) return;
     await Navigator.push(
@@ -143,15 +168,29 @@ class _MessagesScreenState extends State<MessagesScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
                 children: [
-                  const Text('Messages', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Messages',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  const Text('Comments and notices from the projects you can open.', style: TextStyle(color: Colors.grey)),
+                  const Text(
+                    'Comments and notices from the projects you can open.',
+                    style: TextStyle(color: Colors.grey),
+                  ),
                   const SizedBox(height: 18),
-                  if (_error != null) Text(_error!, style: const TextStyle(color: yellow)),
+                  if (_error != null)
+                    Text(_error!, style: const TextStyle(color: yellow)),
                   if (_threads.isEmpty)
                     const Padding(
                       padding: EdgeInsets.only(top: 24),
-                      child: Text('No messages yet.', style: TextStyle(color: Colors.grey)),
+                      child: Text(
+                        'No messages yet.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
                     ),
                   for (final thread in _threads)
                     Padding(
@@ -167,11 +206,27 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(thread.projectName, style: const TextStyle(color: yellow, fontSize: 12, fontWeight: FontWeight.w700)),
+                                Text(
+                                  thread.projectName,
+                                  style: const TextStyle(
+                                    color: yellow,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
-                                Text(thread.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                Text(
+                                  thread.title,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 const SizedBox(height: 4),
-                                Text(thread.body, style: const TextStyle(color: Colors.grey)),
+                                Text(
+                                  thread.body,
+                                  style: const TextStyle(color: Colors.grey),
+                                ),
                               ],
                             ),
                           ),

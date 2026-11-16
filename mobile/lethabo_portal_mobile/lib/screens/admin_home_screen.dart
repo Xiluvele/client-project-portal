@@ -17,7 +17,7 @@ class AdminHomeScreen extends StatefulWidget {
 
 class _AdminHomeScreenState extends State<AdminHomeScreen> {
   static const yellow = Color(0xFFFFEE0B);
-  static const black = Color(0xFF0D0D0D);
+  /* static const black = Color(0xFF0D0D0D);*/
   static const cardColor = Color(0xFF1A1A1A);
 
   final _search = TextEditingController();
