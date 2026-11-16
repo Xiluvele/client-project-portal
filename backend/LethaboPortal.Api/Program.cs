@@ -1236,6 +1236,7 @@ app.MapPost("/api/auth/login", async (
 // The mailbox address and app password stay in user secrets.
 app.MapPost("/api/auth/email-code", async (
     EmailCodeRequest request,
+    ClaimsPrincipal principal,
     PortalMailer mailer,
     CancellationToken cancellationToken) =>
 {
@@ -1248,6 +1249,17 @@ app.MapPost("/api/auth/email-code", async (
             sent = false,
             message = "A valid email and 6-digit code are required."
         });
+    }
+
+    // Every signed-in role (client, developer, manager, administrator) needs this
+    // for the 6-digit sign-in code. To stop it being used to email strangers,
+    // clients and developers can only send the code to their OWN address.
+    var role = CurrentRole(principal);
+    var ownEmail = principal.FindFirstValue(ClaimTypes.Email) ?? "";
+    var isStaff = role == "manager" || role == "administrator";
+    if (!isStaff && !string.Equals(email, ownEmail, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Forbid();
     }
 
     if (!mailer.IsConfigured)
@@ -1278,7 +1290,7 @@ app.MapPost("/api/auth/email-code", async (
             message = "Gmail rejected the message. Check the app password."
         });
     }
-}).RequireAuthorization(policy => policy.RequireRole("manager", "administrator"));
+}).RequireAuthorization();
 
 
 // ------------------------------------------------------------
@@ -1792,19 +1804,18 @@ app.MapPost("/api/accounts", async (
         }
         catch (Exception)
         {
-            message = "The account was saved, but Gmail did not send the code.";
+            message = "The account was saved, but the activation email could not be sent. Check the email settings on the server.";
         }
     }
     else
     {
-        message = "Gmail is not connected, so the code was not emailed.";
+        message = "The account was saved, but email is not configured on the server, so no activation email was sent.";
     }
 
     return Results.Ok(new
     {
         ok = true,
         emailed,
-        previewCode = emailed ? null : code,
         message,
         user = new { user.Id, user.Name, user.Email, user.Role, user.ClientId, user.MemberId, user.Title, user.Phone }
     });
