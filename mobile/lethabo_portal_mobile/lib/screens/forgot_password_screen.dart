@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/portal_api.dart';
+import '../password_policy.dart';
 import '../widgets/portal_field.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -61,8 +62,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       _message('The passwords do not match.');
       return;
     }
-    if (_password.text.length < 8) {
-      _message('The password must be at least 8 characters.');
+    final problems = validatePassword(_password.text, personal: [_email.text]);
+    if (problems.isNotEmpty) {
+      _message(problems.join(' '));
       return;
     }
     if (_code.text.trim().length != 6) {
@@ -138,8 +140,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               PasswordField(
                 label: 'New password',
                 controller: _password,
-                hint: 'At least 8 characters',
+                hint: 'At least 12 characters',
               ),
+              const SizedBox(height: 10),
+              PasswordRequirements(controller: _password, email: _email),
               const SizedBox(height: 18),
               PasswordField(
                 label: 'Confirm password',

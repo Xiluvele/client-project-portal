@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../password_policy.dart';
+
 class PasswordField extends StatefulWidget {
   final String label;
   final TextEditingController controller;
@@ -101,6 +103,47 @@ class PortalField extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Live checklist of the password rules, updated as the person types.
+class PasswordRequirements extends StatelessWidget {
+  final TextEditingController controller;
+  final TextEditingController? email;
+
+  const PasswordRequirements({super.key, required this.controller, this.email});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([controller, ?email]),
+      builder: (context, _) {
+        final checks = passwordChecks(
+          controller.text,
+          personal: [?email?.text],
+        );
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final check in checks)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  '${!check.typed ? '•' : check.met ? '✓' : '✗'} ${check.label}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: !check.typed
+                        ? Colors.grey.shade500
+                        : check.met
+                            ? const Color(0xFF1F8A4C)
+                            : const Color(0xFFE5484D),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
