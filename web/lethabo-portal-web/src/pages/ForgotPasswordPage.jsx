@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
+import { PasswordRequirements } from "../components/auth/PasswordRequirements";
 import { PasswordField, TextField } from "../components/ui/Fields";
+import { validatePassword } from "../lib/passwordPolicy";
 import { requestPasswordReset, resetPassword } from "../lib/passwordReset";
 
 export function ForgotPasswordPage() {
@@ -40,8 +42,9 @@ export function ForgotPasswordPage() {
       setError("The passwords do not match.");
       return;
     }
-    if (password.length < 8) {
-      setError("The password must be at least 8 characters.");
+    const problems = validatePassword(password, [email]);
+    if (problems.length > 0) {
+      setError(problems.join(" "));
       return;
     }
     if (code.length !== 6) {
@@ -131,19 +134,19 @@ export function ForgotPasswordPage() {
                 label="New password"
                 name="password"
                 autoComplete="new-password"
-                minLength={8}
                 required
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
+              <PasswordRequirements password={password} personal={[email]} />
               <PasswordField
                 label="Confirm password"
                 name="confirm"
                 autoComplete="new-password"
-                minLength={8}
                 required
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
+                error={confirm && password !== confirm ? "The passwords do not match." : undefined}
               />
             </>
           ) : null}

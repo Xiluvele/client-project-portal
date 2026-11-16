@@ -217,6 +217,18 @@ img { max-width: 100%; }
   font-size: 13px;
 }
 
+.pw-rules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.pw-rules__item--idle { color: var(--muted, #6b7280); }
+.pw-rules__item--met { color: var(--green); }
+.pw-rules__item--unmet { color: var(--red); }
+
 .table-wrap { overflow-x: auto; }
 table.data { width: 100%; border-collapse: collapse; }
 table.data th {

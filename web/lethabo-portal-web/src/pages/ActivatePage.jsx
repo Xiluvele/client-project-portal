@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/Button";
+import { PasswordRequirements } from "../components/auth/PasswordRequirements";
 import { PasswordField, TextField } from "../components/ui/Fields";
+import { validatePassword } from "../lib/passwordPolicy";
 import { homeFor } from "../lib/roles";
 import { useAppState } from "../state/useAppState";
 
@@ -38,9 +40,10 @@ export function ActivatePage() {
       return;
     }
 
-    // The API requires a password of at least 8 characters.
-    if (password.length < 8) {
-      setError("The password must be at least 8 characters.");
+    // The API enforces the same rules; checking here gives instant feedback.
+    const problems = validatePassword(password, [email]);
+    if (problems.length > 0) {
+      setError(problems.join(" "));
       return;
     }
 
@@ -107,7 +110,7 @@ export function ActivatePage() {
           <h2>Activate account</h2>
 
           <p className="signin__lead">
-            Enter the code from the email, then choose a password of at least 8
+            Enter the code from the email, then choose a password of at least 12
             characters.
           </p>
 
@@ -139,20 +142,21 @@ export function ActivatePage() {
             label="New password"
             name="password"
             autoComplete="new-password"
-            minLength={8}
             required
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
 
+          <PasswordRequirements password={password} personal={[email]} />
+
           <PasswordField
             label="Confirm password"
             name="confirm"
             autoComplete="new-password"
-            minLength={8}
             required
             value={confirm}
             onChange={(event) => setConfirm(event.target.value)}
+            error={confirm && password !== confirm ? "The passwords do not match." : undefined}
           />
 
           <Button type="submit" block disabled={isSubmitting}>
