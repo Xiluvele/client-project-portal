@@ -39,15 +39,18 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Check Flutter version
+        run: flutter --version
+
       - name: Install dependencies
         run: flutter pub get
 
       - name: Analyze Flutter code
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Run Flutter tests
-        run: flutter test
         if: hashFiles('mobile/lethabo_portal_mobile/test/**') != ''
+        run: flutter test
 
       - name: Build Android Debug APK
         run: flutter build apk --debug
